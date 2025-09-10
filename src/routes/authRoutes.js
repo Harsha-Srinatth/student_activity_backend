@@ -1,9 +1,12 @@
 import express from "express";
 //import { generateOtp, saveOtp, verifyOtp } from "../utils/otpHelper.js";
 import { enqueueFacultyRegistration ,enqueueStudentRegistration} from "../controllers/authController.js";
-import { loginAsStudent } from "../controllers/loginAsStudent.js";
-import { loginAsFaculty } from "../controllers/loginAsFaculty.js";
-// import { checkauth } from "../middlewares/authCheck.js";
+import { loginAsStudent } from "../controllers/student/loginAsStudent.js";
+import { loginAsFaculty } from "../controllers/faculty/loginAsFaculty.js";
+import { checkauth } from "../middlewares/authCheck.js";
+import studentDocUpload from "../controllers/student/S_Doc_Up.js";
+import { getPendingApprovals, handleApproval, getStudentDetails, bulkApproval } from "../controllers/faculty/faculty_approve.js";
+import upload from "../middlewares/upload.js"
 const router = express.Router();
 
 // POST 
@@ -30,6 +33,7 @@ const router = express.Router();
 
 //   res.json({ success: true, message: "OTP verified ✅" });
 // });
+
 //registration process
 router.post("/register/faculty", enqueueFacultyRegistration);
 router.post("/register/student", enqueueStudentRegistration);
@@ -37,6 +41,19 @@ router.post("/register/student", enqueueStudentRegistration);
 //login process
 router.post("/login/as/student", loginAsStudent);
 router.post("/login/as/faculty", loginAsFaculty);
+
+//student Docs Upload
+router.post("/upload/:studentid", checkauth, upload.single("image"), studentDocUpload)
+
+//student dashboard overview 
+// router.get("/student/home" , checkauth ,  );
+
+//faculty approval routes
+router.get("/faculty/pending-approvals", checkauth, getPendingApprovals);
+router.get("/faculty/student/:studentid", checkauth, getStudentDetails);
+router.post("/faculty/approve/:studentid/:approvalId", checkauth, handleApproval);
+router.post("/faculty/bulk-approve/:studentid", checkauth, bulkApproval);
+
 
 
 export default router;

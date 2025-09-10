@@ -1,31 +1,109 @@
 import mongoose from "mongoose";
 
+// Sub-schema for certifications
+const CertificationSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    issuer: { type: String },
+    dateIssued: { type: Date },
+    imageUrl: { type: String }, // proof or certificate image
+  },
+  { _id: false }
+);
+
+// Sub-schema for workshops
+const WorkshopSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    organizer: { type: String },
+    date: { type: Date },
+    certificateUrl: { type: String },
+  },
+  { _id: false }
+);
+
+// Sub-schema for clubs
+const ClubSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    role: { type: String, default: "member" },
+    joinedOn: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+// Sub-schema for pending approvals
+const ApprovalSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["certificate", "workshop", "club", "other"], // clear categories
+      required: true,
+    },
+    description: { type: String },
+    requestedOn: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+  },
+  { _id: false }
+);
+
+// Main Student Schema
 const StudentDetailSchema = new mongoose.Schema(
   {
-    studentid: { type: String, required: true, unique: true,index: true },
+    studentid: { type: String, required: true, unique: true, index: true },
     fullname: { type: String, required: true },
-    username: { type: String, required: true, unique: true,index: true },
-    email: { type: String, required: true, unique: true,index: true },
+    username: { type: String, required: true, unique: true, index: true },
+    email: { type: String, required: true, unique: true, index: true },
     password: { type: String, required: true },
+
     image: {
       url: {
         type: String,
-        default: 'https://res.cloudinary.com/demo/image/upload/v1/default_avatar.png'
+        default:
+          "https://res.cloudinary.com/demo/image/upload/v1/default_avatar.png",
       },
     },
-    role: { type: String, enum: ['student', 'faculty'], default: 'student', required: true },
-    mobileno: { type: String, unique: true, required: true,index: true },
-    institution: { type: String, required: true ,index: true},
+
+    role: {
+      type: String,
+      enum: ["student", "faculty"],
+      default: "student",
+      required: true,
+    },
+
+    mobileno: { type: String, unique: true, required: true, index: true },
+    institution: { type: String, required: true, index: true },
     programName: { type: String, required: true },
-    dept: { type: String, required: true,index: true },
+    dept: { type: String, required: true, index: true },
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
+
+    // Arrays with defaults
+    certifications: { type: [CertificationSchema], default: [] },
+    workshops: { type: [WorkshopSchema], default: [] },
+    clubsJoined: { type: [ClubSchema], default: [] },
+    pendingApprovals: { type: [ApprovalSchema], default: [] },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    _id: false,
+  }
 );
 
-StudentDetailSchema.index({ institution: 1, dept: 1, studentid: 1, mobileno: 1 ,username: 1,email: 1});
+// Compound index
+StudentDetailSchema.index({
+  institution: 1,
+  dept: 1,
+  studentid: 1,
+  mobileno: 1,
+  username: 1,
+  email: 1,
+});
 
-const StudentDetails = mongoose.model('StudentDetails', StudentDetailSchema);
+const StudentDetails = mongoose.model("StudentDetails", StudentDetailSchema);
 
 export default StudentDetails;

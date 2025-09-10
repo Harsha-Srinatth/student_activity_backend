@@ -1,17 +1,18 @@
-import StudentDetails from "../models/studentDetails.js";
+import FacultyDetails from "../../models/facultyDetails.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-export const loginAsStudent = async(req,res) => {
+
+export const loginAsFaculty = async(req,res) => {
     //getting email and password from user
-    const { studentid, password } = req.body;
+    const { email, password } = req.body;
     console.log("user details from frontend : ",req.body);
     //verifying user entered both fields
-    if (!studentid || !password) {
-        return res.status(400).json({ message: "Reg.No and password are required" });
+    if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
     }
     try {
-        let user = await StudentDetails.findOne({ studentid: studentid });
+        let user = await FacultyDetails.findOne({ email });
             if (!user) {
                 return res.status(404).json({ message: "invalid email or password" });
             }
@@ -21,7 +22,7 @@ export const loginAsStudent = async(req,res) => {
             }
         const token = jwt.sign(
             {
-                studentid: user.userid,
+                facultyid: user.userid,
                 username: user.username,
                 email: user.email,
             },
@@ -31,7 +32,7 @@ export const loginAsStudent = async(req,res) => {
     return res.json({
         token,
         user: {
-            studentid: user.userid,
+            facultyid: user.userid,
             username: user.username,
             email: user.email,
         },

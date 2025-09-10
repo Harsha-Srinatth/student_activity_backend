@@ -2,6 +2,7 @@
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
 
+
 // Explicit host selection
 const redisHost = process.env.REDIS_HOST || "127.0.0.1";
 const redisPort = parseInt(process.env.REDIS_PORT || "6379");
