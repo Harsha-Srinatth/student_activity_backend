@@ -3,9 +3,12 @@ import express from "express";
 import { enqueueFacultyRegistration ,enqueueStudentRegistration} from "../controllers/authController.js";
 import { loginAsStudent } from "../controllers/student/loginAsStudent.js";
 import { loginAsFaculty } from "../controllers/faculty/loginAsFaculty.js";
-import { checkauth } from "../middlewares/authCheck.js";
+import  student_Dashboard_Details from "../controllers/student/student_Dash.js";
+import faculty_Dashboard_Details from "../controllers/faculty/faculty_Dashboard_Details.js"
+import { checkauth , requireRole } from "../middlewares/authCheck.js";
 import studentDocUpload from "../controllers/student/S_Doc_Up.js";
 import { getPendingApprovals, handleApproval, getStudentDetails, bulkApproval } from "../controllers/faculty/faculty_approve.js";
+import { getFacultyActivities, getFacultyMetrics } from "../controllers/faculty/faculty_activities.js";
 import upload from "../middlewares/upload.js"
 const router = express.Router();
 
@@ -43,16 +46,28 @@ router.post("/login/as/student", loginAsStudent);
 router.post("/login/as/faculty", loginAsFaculty);
 
 //student Docs Upload
-router.post("/upload/:studentid", checkauth, upload.single("image"), studentDocUpload)
+router.post(
+  "/upload/:studentid",
+  checkauth,
+  requireRole("student"),
+  upload.single("image"),
+  studentDocUpload
+);
 
 //student dashboard overview 
-// router.get("/student/home" , checkauth ,  );
+router.get("/student/home",checkauth,requireRole("student"),student_Dashboard_Details);
+router.get("/faculty/home",checkauth,requireRole("faculty"),faculty_Dashboard_Details)
 
-//faculty approval routes
-router.get("/faculty/pending-approvals", checkauth, getPendingApprovals);
-router.get("/faculty/student/:studentid", checkauth, getStudentDetails);
-router.post("/faculty/approve/:studentid/:approvalId", checkauth, handleApproval);
-router.post("/faculty/bulk-approve/:studentid", checkauth, bulkApproval);
+//faculty approval routes,
+router.get("/faculty/pending-approvals", checkauth, requireRole("faculty"), getPendingApprovals);
+router.get("/faculty/student/:studentid", checkauth, requireRole("faculty"), getStudentDetails);
+router.post("/faculty/approve/:studentid/:approvalId", checkauth, requireRole("faculty"), handleApproval);
+router.post("/faculty/bulk-approve/:studentid", checkauth, requireRole("faculty"), bulkApproval);
+
+//faculty activities and metrics routes,
+router.get("/faculty/activities", checkauth, requireRole("faculty"), getFacultyActivities);
+router.get("/faculty/metrics", checkauth, requireRole("faculty"), getFacultyMetrics);
+
 
 
 

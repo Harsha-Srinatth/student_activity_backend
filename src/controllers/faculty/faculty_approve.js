@@ -1,12 +1,20 @@
 import StudentDetails from "../../models/studentDetails.js";
 
-// Get all students with pending approvals
+// Get all students with pending approvals for the current faculty
 const getPendingApprovals = async (req, res) => {
   try {
+    // Get the current faculty ID from the authenticated request
+    const currentFacultyId = req.user.facultyid;
+    
+    if (!currentFacultyId) {
+      return res.status(401).json({ error: 'Faculty ID not found in token' });
+    }
+
     const students = await StudentDetails.find({
+      facultyid: currentFacultyId, // Filter by current faculty's ID
       'pendingApprovals.0': { $exists: true },
       'pendingApprovals.status': 'pending'
-    }).select('fullname studentid email institution dept programName pendingApprovals certifications workshops clubsJoined');
+    }).select('fullname studentid email institution dept programName pendingApprovals certifications workshops clubsJoined facultyid');
 
     // Filter students who actually have pending approvals
     const studentsWithPending = students.filter(student => 
@@ -25,14 +33,22 @@ const handleApproval = async (req, res) => {
   try {
     const { studentid, approvalId } = req.params;
     const { action, message } = req.body;
+    const currentFacultyId = req.user.facultyid;
+
+    if (!currentFacultyId) {
+      return res.status(401).json({ error: 'Faculty ID not found in token' });
+    }
 
     if (!action || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject"' });
     }
 
-    const student = await StudentDetails.findOne({ studentid });
+    const student = await StudentDetails.findOne({ 
+      studentid,
+      facultyid: currentFacultyId // Ensure student belongs to current faculty
+    });
     if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
+      return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
     // Find the pending approval
@@ -61,6 +77,64 @@ const handleApproval = async (req, res) => {
 
     await student.save();
 
+    // Update faculty statistics and track activity
+    try {
+      const FacultyDetails = (await import("../../models/facultyDetails.js")).default;
+      
+      // Record the approval in faculty's approvalsGiven array
+      const approvalData = {
+        studentid: student.studentid,
+        studentName: student.fullname,
+        type: approval.type,
+        description: approval.description,
+        status: action === 'approve' ? 'approved' : 'rejected',
+        message: message || ''
+      };
+
+      await FacultyDetails.findOneAndUpdate(
+        { facultyid: currentFacultyId },
+        { 
+          $push: { approvalsGiven: approvalData },
+          $inc: { approvalsCount: 1 }
+        }
+      );
+
+      // Add recent activity
+      await FacultyDetails.findOneAndUpdate(
+        { facultyid: currentFacultyId },
+        { 
+          $push: { 
+            recentActivities: {
+              studentid: student.studentid,
+              studentName: student.fullname,
+              action: action === 'approve' ? 'approved' : 'rejected',
+              type: approval.type,
+              description: approval.description,
+              timestamp: new Date()
+            }
+          }
+        }
+      );
+
+      // Invalidate cached stats to force refresh
+      await FacultyDetails.findOneAndUpdate(
+        { facultyid: currentFacultyId },
+        { 
+          $unset: { 
+            'dashboardStats.totalStudents': 1,
+            'dashboardStats.pendingApprovals': 1,
+            'dashboardStats.approvedCertifications': 1,
+            'dashboardStats.approvedWorkshops': 1,
+            'dashboardStats.approvedClubs': 1
+          }
+        }
+      );
+
+    } catch (facultyUpdateError) {
+      console.error('Error updating faculty statistics:', facultyUpdateError);
+      // Don't fail the main operation if faculty stats update fails
+    }
+
     res.json({ 
       message: `Submission ${action}d successfully`,
       approval: student.pendingApprovals[approvalIndex]
@@ -76,12 +150,19 @@ const handleApproval = async (req, res) => {
 const getStudentDetails = async (req, res) => {
   try {
     const { studentid } = req.params;
+    const currentFacultyId = req.user.facultyid;
 
-    const student = await StudentDetails.findOne({ studentid })
-      .select('fullname studentid email mobileno institution dept programName pendingApprovals certifications workshops clubsJoined');
+    if (!currentFacultyId) {
+      return res.status(401).json({ error: 'Faculty ID not found in token' });
+    }
+
+    const student = await StudentDetails.findOne({ 
+      studentid,
+      facultyid: currentFacultyId // Ensure student belongs to current faculty
+    }).select('fullname studentid email mobileno institution dept programName pendingApprovals certifications workshops clubsJoined facultyid');
 
     if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
+      return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
     res.json(student);
@@ -96,6 +177,11 @@ const bulkApproval = async (req, res) => {
   try {
     const { studentid } = req.params;
     const { approvals, action, message } = req.body;
+    const currentFacultyId = req.user.facultyid;
+
+    if (!currentFacultyId) {
+      return res.status(401).json({ error: 'Faculty ID not found in token' });
+    }
 
     if (!action || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject"' });
@@ -105,9 +191,12 @@ const bulkApproval = async (req, res) => {
       return res.status(400).json({ message: 'Approvals array is required' });
     }
 
-    const student = await StudentDetails.findOne({ studentid });
+    const student = await StudentDetails.findOne({ 
+      studentid,
+      facultyid: currentFacultyId // Ensure student belongs to current faculty
+    });
     if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
+      return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
     // Update multiple approvals

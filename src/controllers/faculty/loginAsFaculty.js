@@ -22,9 +22,10 @@ export const loginAsFaculty = async(req,res) => {
             }
         const token = jwt.sign(
             {
-                facultyid: user.userid,
+                facultyid: user.facultyid,
                 username: user.username,
                 email: user.email,
+                role: "faculty", // Add role to JWT token
             },
             process.env.MY_SECRET_KEY,
             { expiresIn: '1d' }
@@ -32,7 +33,7 @@ export const loginAsFaculty = async(req,res) => {
     return res.json({
         token,
         user: {
-            facultyid: user.userid,
+            facultyid: user.facultyid,
             username: user.username,
             email: user.email,
         },

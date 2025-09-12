@@ -1,14 +1,14 @@
-import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "../utils/cloudinary.js";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import multer from "multer";
 
-// Multer Storage linked with Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder: "student_uploads", // Cloudinary folder name
+  params: async (req, file) => ({
+    folder: "student_activity",
     allowed_formats: ["jpg", "jpeg", "png", "pdf"],
-  },
+    public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,
+  }),
 });
 
 const upload = multer({ storage });

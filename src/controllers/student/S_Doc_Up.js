@@ -1,22 +1,25 @@
-import express from "express";
+
 import StudentDetails from "../../models/studentDetails.js";
 // import upload from "../../middlewares/upload.js";
 
-const router = express.Router();
 
 // Upload certificate/workshop/club proof
 const studentDocUpload = async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    console.log("cloudinary file:",req.file);
     const { type, title, issuer, organizer, description, date } = req.body;
     const studentid = req.params.studentid;
+    console.log("this is body",req.body);
 
-    const student = await StudentDetails.findOne({ studentid });
+    const student = await StudentDetails.findOne({ studentid: studentid });
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
-
     // File uploaded → Cloudinary URL
-    const imageUrl = req.file?.path;
+    const imageUrl = req.file?.path || req.file?.secure_url;
 
     // Decide where to push based on `type`
     if (type === "certificate") {
@@ -57,6 +60,15 @@ const studentDocUpload = async (req, res) => {
         description,
       });
     }
+   console.log("before saving user doc", {
+      fieldname: 'image',
+      originalname: 'myfile.png',
+      mimetype: 'image/png',
+      path: 'https://res.cloudinary.com/.../student_docs/...',
+      filename: '...',
+      size: 12345
+    });
+    
 
     await student.save();
 

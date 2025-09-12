@@ -1,4 +1,10 @@
 // server.js
+
+// docker compose up -d --build
+//stop 
+// docker compose down
+//locally
+//docker-compose up redis -d
 import express from "express";
 import dotenv from "dotenv";
 import helmet from "helmet";
@@ -69,6 +75,18 @@ createRegistrationQueue();
 
 // Routes
 app.use("/", authRoutes);
+
+// Global JSON error handler (captures Multer/Cloudinary and other errors)
+// Must be after all routes
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const statusCode = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  // Optionally include details in non-production
+  const details = process.env.NODE_ENV === "production" ? undefined : err.stack;
+  req.log?.error({ err, statusCode }, "Unhandled error");
+  res.status(statusCode).json({ error: message, details });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => logger.info(`Server listening on port ${PORT}`));

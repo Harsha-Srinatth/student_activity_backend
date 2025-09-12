@@ -21,9 +21,9 @@ export const loginAsStudent = async(req,res) => {
             }
         const token = jwt.sign(
             {
-                studentid: user.userid,
+                studentid: user.studentid, // <-- important fix
                 username: user.username,
-                email: user.email,
+                role: "student", // Add role to JWT token
             },
             process.env.MY_SECRET_KEY,
             { expiresIn: '1d' }
@@ -31,7 +31,7 @@ export const loginAsStudent = async(req,res) => {
     return res.json({
         token,
         user: {
-            studentid: user.userid,
+            studentid: user.studentid,
             username: user.username,
             email: user.email,
         },

@@ -6,7 +6,7 @@ const CertificationSchema = new mongoose.Schema(
     title: { type: String, required: true },
     issuer: { type: String },
     dateIssued: { type: Date },
-    imageUrl: { type: String }, // proof or certificate image
+    imageUrl: { type: String }, 
   },
   { _id: false }
 );
@@ -81,6 +81,7 @@ const StudentDetailSchema = new mongoose.Schema(
     dept: { type: String, required: true, index: true },
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
+    facultyid: {type: String,required: true},
 
     // Arrays with defaults
     certifications: { type: [CertificationSchema], default: [] },
@@ -102,6 +103,7 @@ StudentDetailSchema.index({
   mobileno: 1,
   username: 1,
   email: 1,
+  facultyid: 1,
 });
 
 const StudentDetails = mongoose.model("StudentDetails", StudentDetailSchema);
