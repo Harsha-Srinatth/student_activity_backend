@@ -5,25 +5,46 @@ const getPendingApprovals = async (req, res) => {
   try {
     // Get the current faculty ID from the authenticated request
     const currentFacultyId = req.user.facultyid;
-    
+
     if (!currentFacultyId) {
-      return res.status(401).json({ error: 'Faculty ID not found in token' });
+      return res.status(401).json({ error: "Faculty ID not found in token" });
     }
 
-    const students = await StudentDetails.find({
-      facultyid: currentFacultyId, // Filter by current faculty's ID
-      'pendingApprovals.0': { $exists: true },
-      'pendingApprovals.status': 'pending'
-    }).select('fullname studentid email institution dept programName pendingApprovals certifications workshops clubsJoined facultyid');
+    const students = await StudentDetails.aggregate([
+      {
+        $match: {
+          facultyid: currentFacultyId,
+          "pendingApprovals.status": "pending",
+        },
+      },
+      {
+        $project: {
+          fullname: 1,
+          studentid: 1,
+          email: 1,
+          institution: 1,
+          dept: 1,
+          programName: 1,
+          certifications: 1,
+          workshops: 1,
+          clubsJoined: 1,
+          internships: 1,
+          projects: 1,
+          facultyid: 1,
+          pendingApprovals: {
+            $filter: {
+              input: "$pendingApprovals",
+              as: "approval",
+              cond: { $eq: ["$$approval.status", "pending"] },
+            },
+          },
+        },
+      },
+    ]);
 
-    // Filter students who actually have pending approvals
-    const studentsWithPending = students.filter(student => 
-      student.pendingApprovals.some(approval => approval.status === 'pending')
-    );
-
-    res.json(studentsWithPending);
+    res.json(students);
   } catch (error) {
-    console.error('Error fetching pending approvals:', error);
+    console.error("Error fetching pending approvals:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -66,6 +87,7 @@ const handleApproval = async (req, res) => {
     // Update the approval status
     student.pendingApprovals[approvalIndex].status = action === 'approve' ? 'approved' : 'rejected';
     student.pendingApprovals[approvalIndex].reviewedOn = new Date();
+    student.pendingApprovals[approvalIndex].reviewedBy = currentFacultyId; // or use faculty name if available
     student.pendingApprovals[approvalIndex].message = message || '';
 
     // If approved, ensure the submission is properly saved
@@ -147,7 +169,7 @@ const handleApproval = async (req, res) => {
 };
 
 // Get detailed view of a specific student's submissions
-const getStudentDetails = async (req, res) => {
+const getStudentDetailsFrom = async (req, res) => {
   try {
     const { studentid } = req.params;
     const currentFacultyId = req.user.facultyid;
@@ -157,9 +179,9 @@ const getStudentDetails = async (req, res) => {
     }
 
     const student = await StudentDetails.findOne({ 
-      studentid,
+      studentid, 
       facultyid: currentFacultyId // Ensure student belongs to current faculty
-    }).select('fullname studentid email mobileno institution dept programName pendingApprovals certifications workshops clubsJoined facultyid');
+    }).select('fullname studentid email mobileno institution dept programName pendingApprovals certifications workshops clubsJoined internships projects facultyid');
 
     if (!student) {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
@@ -208,6 +230,7 @@ const bulkApproval = async (req, res) => {
       if (approvalIndex !== -1) {
         student.pendingApprovals[approvalIndex].status = action === 'approve' ? 'approved' : 'rejected';
         student.pendingApprovals[approvalIndex].reviewedOn = new Date();
+        student.pendingApprovals[approvalIndex].reviewedBy = currentFacultyId; // or use faculty name if available
         student.pendingApprovals[approvalIndex].message = message || '';
       }
     });
@@ -225,4 +248,4 @@ const bulkApproval = async (req, res) => {
   }
 };
 
-export { getPendingApprovals, handleApproval, getStudentDetails, bulkApproval };
+export { getPendingApprovals, handleApproval, getStudentDetailsFrom, bulkApproval };

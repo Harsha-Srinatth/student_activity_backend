@@ -81,6 +81,7 @@ const worker = new Worker(
           password: hashedPassword,
           programName: data.programName,
           semester: data.semester,
+          facultyid: data.facultyid,
           dateofjoin: data.dateofjoin,
         };
 

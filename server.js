@@ -15,7 +15,7 @@ import pino from "pino";
 import expressPino from "pino-http";
 
 import authRoutes from "./src/routes/authRoutes.js";
-import { createRegistrationQueue } from "./src/queue/registrationQueue.js";
+// import { createRegistrationQueue } from "./src/queue/registrationQueue.js"; // Disabled
 
 dotenv.config();
 
@@ -65,13 +65,13 @@ mongoose
   });
 
 // -------------------------------
-// Redis Queue
+// Redis Queue (Disabled - using direct DB insertion)
 // -------------------------------
 // Detect whether running in Docker (REDIS_HOST=redis) or local (127.0.0.1)
-process.env.REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
-process.env.REDIS_PORT = process.env.REDIS_PORT || "6379";
+// process.env.REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
+// process.env.REDIS_PORT = process.env.REDIS_PORT || "6379";
 
-createRegistrationQueue();
+// createRegistrationQueue(); // Disabled since we're using direct DB insertion
 
 // Routes
 app.use("/", authRoutes);

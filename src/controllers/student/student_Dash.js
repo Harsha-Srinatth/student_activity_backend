@@ -1,39 +1,97 @@
+import mongoose from "mongoose";
 import StudentDetails from "../../models/studentDetails.js";
 // import Administrator from "../../models/administrator.js";
 
 const student_Dashboard_Details = async (req, res) => {
   try {
-    const { studentid } = req.user; // ⚡ use JWT instead of req.body
+    const { studentid } = req.user; // ⚡ from JWT
 
     if (!studentid) {
       return res.status(400).json({ message: "Student Id is required" });
     }
 
-    // Find student by ID
-    const student = await StudentDetails.findOne({ studentid });
-    if (!student) {
+    // Use aggregation to calculate counts directly from pendingApprovals
+    const result = await StudentDetails.aggregate([
+      { $match: { studentid } },
+      {
+        $project: {
+          studentid: 1,
+          fullname: 1,
+          email: 1,
+          role: 1,
+          semester: 1,
+          dept: 1,
+          certificationsCount: {
+            $size: {
+              $filter: {
+                input: "$pendingApprovals",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $eq: ["$$p.type", "certificate"] },
+                    { $eq: ["$$p.status", "approved"] }
+                  ]
+                }
+              }
+            }
+          },
+          workshopsCount: {
+            $size: {
+              $filter: {
+                input: "$pendingApprovals",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $eq: ["$$p.type", "workshop"] },
+                    { $eq: ["$$p.status", "approved"] }
+                  ]
+                }
+              }
+            }
+          },
+          clubsJoinedCount: {
+            $size: {
+              $filter: {
+                input: "$pendingApprovals",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $eq: ["$$p.type", "club"] },
+                    { $eq: ["$$p.status", "approved"] }
+                  ]
+                }
+              }
+            }
+          },
+          pendingApprovalsCount: {
+            $size: {
+              $filter: {
+                input: "$pendingApprovals",
+                as: "p",
+                cond: { $eq: ["$$p.status", "pending"] }
+              }
+            }
+          },
+          pendingApprovals: 1
+        }
+      }
+    ]);
+
+    if (!result || result.length === 0) {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // Count fields
-    const counts = {
-      certificationsCount: student.certifications?.length || 0,
-      workshopsCount: student.workshops?.length || 0,
-      clubsJoinedCount: student.clubsJoined?.length || 0,
-      pendingApprovalsCount: student.pendingApprovals?.length || 0,
-    };
-
-    // Latest 8 announcements from administrator
-    // const adminData = await Administrator.findOne().sort({ createdAt: -1 });
-    // let latestAnnouncements = [];
-    // if (adminData && adminData.announcements) {
-    //   latestAnnouncements = adminData.announcements
-    //     .slice(-8)
-    //     .reverse();
-    // }
+    const student = result[0];
 
     // Latest 6 pending approvals
     const latestPendingApprovals = (student.pendingApprovals || [])
+      .filter(item => item.status === "pending")
+      .sort((a, b) => new Date(b.requestedOn) - new Date(a.requestedOn))
+      .slice(0, 6);
+
+    // Latest 6 rejected approvals
+    const latestRejectedApprovals = (student.pendingApprovals || [])
+      .filter(item => item.status === "rejected")
       .sort((a, b) => new Date(b.requestedOn) - new Date(a.requestedOn))
       .slice(0, 6);
 
@@ -45,10 +103,16 @@ const student_Dashboard_Details = async (req, res) => {
         role: student.role,
         semester: student.semester,
         dept: student.dept,
+        programName:student.programName
       },
-      counts,
-      // announcements: latestAnnouncements,
-      pendingApprovals: latestPendingApprovals, // ⚡ new field
+      counts: {
+        certificationsCount: student.certificationsCount,
+        workshopsCount: student.workshopsCount,
+        clubsJoinedCount: student.clubsJoinedCount,
+        pendingApprovalsCount: student.pendingApprovalsCount,
+      },
+      pendingApprovals: latestPendingApprovals,
+      rejectedApprovals: latestRejectedApprovals,
     });
   } catch (error) {
     console.error("Error fetching student dashboard details:", error);

@@ -1,6 +1,8 @@
 // src/controllers/authController.js
 import Joi from "joi";
-import { registrationQueue } from "../queue/registrationQueue.js";
+import bcrypt from "bcryptjs";
+import FacultyDetails from "../models/facultyDetails.js";
+import StudentDetails from "../models/studentDetails.js";
 
 
 // Validation schema
@@ -28,6 +30,7 @@ const studentSchema = Joi.object({
   password: Joi.string().min(8).required(),
   programName: Joi.string().trim().required(),
   semester: Joi.string().trim().optional().allow(""),
+  facultyid: Joi.string().trim().required(),
   dateofjoin: Joi.date().iso().required(),
 });
 
@@ -38,25 +41,36 @@ export const enqueueFacultyRegistration = async (req, res) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    // Create a job id derived from unique field to avoid accidental duplicates in queue
-    const jobId = `faculty:${value.email || value.facultyid || value.username}`;
+    // Hash password
+    const hashedPassword = await bcrypt.hash(value.password, 12);
 
-    // add job to queue (fast)
-    await registrationQueue.add("faculty-register", value, {
-      jobId,
-      removeOnComplete: { age: 3600, count: 1000 }, // keep short
-      removeOnFail: { age: 3600, count: 1000 },
-      attempts: 5,
-      backoff: { type: "exponential", delay: 1000 },
-    });
+    // Create faculty document
+    const facultyDoc = {
+      facultyid: value.facultyid,
+      fullname: value.fullname,
+      username: value.username,
+      institution: value.institution,
+      dept: value.dept,
+      email: value.email,
+      mobile: value.mobile,
+      password: hashedPassword,
+      dateofjoin: value.dateofjoin,
+    };
 
-    // immediately respond — background worker will handle DB insertion
-    return res.status(202).json({
-      message: "Registration submitted. Processing in background.",
-      jobId,
+    // Save to database
+    await FacultyDetails.create(facultyDoc);
+
+    return res.status(201).json({
+      message: "Faculty registration successful!",
     });
   } catch (err) {
-    console.error("enqueue error:", err);
+    console.error("Faculty registration error:", err);
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || {})[0];
+      return res.status(400).json({ 
+        message: `${field} already exists. Please use a different ${field}.` 
+      });
+    }
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -66,24 +80,39 @@ export const enqueueStudentRegistration = async (req, res) => {
     const { error, value } = studentSchema.validate(req.body, { stripUnknown: true });
     if (error) return res.status(400).json({ message: error.details[0].message });
 
-    // Unique job ID
-    const jobId = `student:${value.email || value.studentid || value.username}`;
+    // Hash password
+    const hashedPassword = await bcrypt.hash(value.password, 12);
 
-    // Add to queue
-    await registrationQueue.add("student-register", value, {
-      jobId,
-      removeOnComplete: { age: 3600, count: 1000 },
-      removeOnFail: { age: 3600, count: 1000 },
-      attempts: 5,
-      backoff: { type: "exponential", delay: 1000 },
-    });
+    // Create student document
+    const studentDoc = {
+      studentid: value.studentid,
+      fullname: value.fullname,
+      username: value.username,
+      institution: value.institution,
+      dept: value.dept,
+      email: value.email,
+      mobileno: value.mobileno,
+      password: hashedPassword,
+      programName: value.programName,
+      semester: value.semester,
+      facultyid: value.facultyid,
+      dateofjoin: value.dateofjoin,
+    };
 
-    return res.status(202).json({
-      message: "Student registration submitted. Processing in background.",
-      jobId,
+    // Save to database
+    await StudentDetails.create(studentDoc);
+
+    return res.status(201).json({
+      message: "Student registration successful!",
     });
   } catch (err) {
-    console.error("enqueue error:", err);
+    console.error("Student registration error:", err);
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || {})[0];
+      return res.status(400).json({ 
+        message: `${field} already exists. Please use a different ${field}.` 
+      });
+    }
     return res.status(500).json({ message: "Server error" });
   }
 };
