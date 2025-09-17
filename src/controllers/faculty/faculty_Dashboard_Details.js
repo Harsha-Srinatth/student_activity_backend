@@ -11,7 +11,7 @@ const faculty_Dashboard_Details = async (req, res) => {
 
     // Get faculty information with cached stats
     const faculty = await FacultyDetails.findOne({ facultyid: currentFacultyId })
-      .select('fullname facultyid institution dept designation dashboardStats approvalsCount lastLogin');
+      .select('fullname facultyid institution dept designation dashboardStats approvalsCount lastLogin email mobile username dateofjoin image');
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
@@ -47,7 +47,14 @@ const faculty_Dashboard_Details = async (req, res) => {
         fullname: faculty.fullname,
         institution: faculty.institution,
         dept: faculty.dept,
-        designation: faculty.designation
+        designation: faculty.designation,
+        email: faculty.email,
+        mobile: faculty.mobile,
+        username: faculty.username,
+        dateofjoin: faculty.dateofjoin,
+        image: faculty.image,
+        lastLogin: faculty.lastLogin,
+        approvalsCount: faculty.approvalsCount,
       },
       stats: dashboardStats,
       lastUpdated: dashboardStats.lastUpdated

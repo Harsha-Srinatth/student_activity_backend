@@ -1,19 +1,5 @@
 import mongoose from "mongoose";
 
-//verification schema
-const VerificationSchema = new mongoose.Schema(
-  {
-    verifiedBy: { type: String }, // facultyId/adminId
-    date: { type: Date },
-    status: {
-      type: String,
-      enum: ["pending", "verified", "rejected"],
-      default: "pending",
-    },
-    remarks: { type: String },
-  },
-  { _id: false }
-);
 // Sub-schema for certifications
 const CertificationSchema = new mongoose.Schema(
   {
@@ -21,9 +7,13 @@ const CertificationSchema = new mongoose.Schema(
     issuer: { type: String },
     dateIssued: { type: Date },
     imageUrl: { type: String },
-    verification: VerificationSchema,
-  },
-  { _id: false }
+    verification: {
+      verifiedBy: { type: String },
+      date: { type: Date },
+      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+      remarks: { type: String },
+    },
+  }
 );
 
 // Sub-schema for workshops
@@ -33,9 +23,13 @@ const WorkshopSchema = new mongoose.Schema(
     organizer: { type: String },
     date: { type: Date },
     certificateUrl: { type: String },
-    verification: VerificationSchema,
-  },
-  { _id: false }
+    verification: {
+      verifiedBy: { type: String },
+      date: { type: Date },
+      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+      remarks: { type: String },
+    },
+  }
 );
 
 // Sub-schema for clubs
@@ -44,9 +38,14 @@ const ClubSchema = new mongoose.Schema(
     name: { type: String, required: true },
     role: { type: String, default: "member" },
     joinedOn: { type: Date, default: Date.now },
-    verification: VerificationSchema,
-  },
-  { _id: false }
+    imageUrl: { type: String },
+    verification: {
+      verifiedBy: { type: String },
+      date: { type: Date },
+      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+      remarks: { type: String },
+    },
+  }
 );
 
 const InternshipSchema = new mongoose.Schema(
@@ -59,7 +58,12 @@ const InternshipSchema = new mongoose.Schema(
     projects: [String],
     recommendationUrl: { type: String },
     imageUrl: {type: String},
-    verification: VerificationSchema,
+    verification: {
+      verifiedBy: { type: String },
+      date: { type: Date },
+      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+      remarks: { type: String },
+    },
   },
   { _id: false }
 );
@@ -73,9 +77,13 @@ const ProjectSchema = new mongoose.Schema(
     repoLink: { type: String },
     demoLink: { type: String },
     imageUrl: { type: String },
-    verification: VerificationSchema,
-  },
-  { _id : false}
+    verification: {
+      verifiedBy: { type: String },
+      date: { type: Date },
+      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+      remarks: { type: String },
+    },
+  }
 );
 
 // Sub-schema for pending approvals
@@ -103,8 +111,7 @@ const ApprovalSchema = new mongoose.Schema(
     reviewedOn: { type: Date },
     reviewedBy: { type: String }, // facultyid or name
     message: { type: String }, // remarks/feedback
-  },
-  { _id: false }
+  }
 );
 
 // Main Student Schema
@@ -150,7 +157,6 @@ const StudentDetailSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    _id: false,
   }
 );
 

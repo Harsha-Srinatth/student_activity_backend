@@ -1,4 +1,5 @@
 import FacultyDetails from "../../models/facultyDetails.js";
+import StudentDetails from "../../models/studentDetails.js";
 
 // Get faculty recent activities
 const getFacultyActivities = async (req, res) => {
@@ -23,16 +24,60 @@ const getFacultyActivities = async (req, res) => {
       .slice(0, 20);
 
     // Get last 10 approvals given (with null safety)
-    const recentApprovals = (faculty.approvalsGiven || [])
+    let recentApprovals = (faculty.approvalsGiven || [])
+      .map(a => ({
+        ...a,
+        approvedOn: a.approvedOn || a.reviewedOn || a.timestamp || a.date || new Date(),
+      }))
       .sort((a, b) => new Date(b.approvedOn) - new Date(a.approvedOn))
       .slice(0, 10);
 
-    res.json({
+    // Backfill missing imageUrl/institution for approvals by reading from student records
+    const missingData = recentApprovals.some(a => !a.imageUrl || !a.institution || !a.reviewedBy);
+    if (missingData) {
+      const studentIds = [...new Set(recentApprovals.map(a => a.studentid).filter(Boolean))];
+      const students = await StudentDetails.find({ studentid: { $in: studentIds } })
+        .select('studentid institution certifications workshops projects internships')
+        .lean();
+      const byId = new Map(students.map(s => [s.studentid, s]));
+      recentApprovals = recentApprovals.map(a => {
+        if (a.imageUrl && a.institution && a.reviewedBy) return a;
+        const stu = byId.get(a.studentid);
+        if (!stu) return a;
+        let imageUrl = a.imageUrl;
+        if (!imageUrl) {
+          const { type, description } = a;
+          if (type === 'certificate') {
+            const cert = (stu.certifications || []).find(c => c.title === description);
+            imageUrl = cert?.imageUrl;
+          } else if (type === 'workshop') {
+            const ws = (stu.workshops || []).find(w => w.title === description);
+            imageUrl = ws?.certificateUrl;
+          } else if (type === 'project') {
+            const pr = (stu.projects || []).find(p => p.title === description);
+            imageUrl = pr?.imageUrl;
+          } else if (type === 'internship') {
+            const it = (stu.internships || []).find(i => i.role === description || i.organization === description);
+            imageUrl = it?.imageUrl || it?.recommendationUrl;
+          }
+        }
+        return {
+          ...a,
+          imageUrl: imageUrl || a.imageUrl,
+          institution: a.institution || stu.institution,
+          reviewedBy: a.reviewedBy || undefined,
+        };
+      });
+    }
+
+    const response = {
       recentActivities,
       recentApprovals,
       totalActivities: faculty.recentActivities?.length || 0,
       totalApprovals: faculty.approvalsGiven?.length || 0
-    });
+    };
+
+    res.json(response);
 
   } catch (error) {
     console.error('Error fetching faculty activities:', error);

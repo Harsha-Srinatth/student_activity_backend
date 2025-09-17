@@ -5,9 +5,15 @@ const ApprovalActionSchema = new mongoose.Schema(
   {
     studentid: { type: String, required: true }, // link to student
     studentName: { type: String, required: true }, // for quick reference
+    institution: { type: String },
     type: { 
       type: String, 
-      enum: ["certificate", "workshop", "club", "other"], 
+      enum: [ "certificate",
+        "workshop",
+        "club",
+        "internship",
+        "project",
+        "other",], 
       required: true 
     },
     description: { type: String },
@@ -17,6 +23,8 @@ const ApprovalActionSchema = new mongoose.Schema(
       required: true 
     },
     approvedOn: { type: Date, default: Date.now },
+    reviewedBy: { type: String },
+    imageUrl: { type: String },
     message: { type: String }, // feedback message
   },
   { _id: false }
@@ -50,7 +58,12 @@ const RecentActivitySchema = new mongoose.Schema(
     },
     type: { 
       type: String, 
-      enum: ["certificate", "workshop", "club", "other"], 
+      enum: [ "certificate",
+        "workshop",
+        "club",
+        "internship",
+        "project",
+        "other",], 
       required: true 
     },
     description: { type: String },

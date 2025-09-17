@@ -44,10 +44,12 @@ const studentDocUpload = async (req, res) => {
         issuer,
         dateIssued: date,
         imageUrl: fileUrl,
+        verification: { status: "pending" },
       });
       student.pendingApprovals.push({
         type: "certificate",
         description: title,
+        verification: { status: "pending" },
       });
     } else if (type === "workshop") {
       if (!title || !organizer) {
@@ -58,6 +60,7 @@ const studentDocUpload = async (req, res) => {
         organizer,
         date,
         certificateUrl: fileUrl,
+        verification: { status: "pending" },
       });
       student.pendingApprovals.push({
         type: "workshop",
@@ -71,10 +74,13 @@ const studentDocUpload = async (req, res) => {
         name: title,
         role: role || "member",
         joinedOn: date,
+        imageUrl: fileUrl,
+        verification: { status: "pending" },
       });
       student.pendingApprovals.push({
         type: "club",
         description: title,
+        imageUrl: fileUrl,
       });
     } else if (type === "internship") {
       if (!organization || !role || !startDate || !endDate) {
@@ -94,6 +100,7 @@ const studentDocUpload = async (req, res) => {
       student.pendingApprovals.push({
         type: "internship",
         description: `${organization} - ${role}`,
+        imageUrl: fileUrl,
       });
     } else if (type === "project") {
       if (!title) {
@@ -113,6 +120,7 @@ const studentDocUpload = async (req, res) => {
       student.pendingApprovals.push({
         type: "project",
         description: title,
+        imageUrl: fileUrl,
       });
     } else {
       if (!description) {

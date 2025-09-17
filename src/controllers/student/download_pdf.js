@@ -1,5 +1,25 @@
 import PDFDocument from "pdfkit";
+import https from "https";
 import StudentDetails from "../../models/studentDetails.js";
+
+// helper: fetch image buffer using https
+function fetchImageBuffer(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      const data = [];
+      res.on("data", (chunk) => data.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(data)));
+    }).on("error", reject);
+  });
+}
+
+// --- Helper for section titles ---
+function addSectionTitle(doc, title) {
+  doc.moveDown(1);
+  doc.fontSize(16).fillColor("#1a1a1a").text(title, { underline: true });
+  doc.moveDown(0.5);
+  doc.fillColor("#000000");
+}
 
 export const generateStudentPortfolioPDF = async (req, res) => {
   try {
@@ -12,71 +32,105 @@ export const generateStudentPortfolioPDF = async (req, res) => {
 
     // Create PDF
     const doc = new PDFDocument({ margin: 50 });
-    const filename = `${student.fullname.replace(" ", "_")}_Portfolio.pdf`;
+    const filename = `student_${studentid}.pdf`;
 
-    // Handle errors from pdfkit
-    doc.on("error", (err) => {
-      console.error("PDF generation error:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ message: "Error generating PDF" });
-      } else {
-        res.end(); // just end the stream if headers are already sent
-      }
-    });
-
-    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+    // Pipe to response
     res.setHeader("Content-Type", "application/pdf");
-
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     doc.pipe(res);
 
-    // ---- PDF Content ----
-    doc.fontSize(20).text(student.fullname, { align: "center" });
-    doc.fontSize(12).text(`${student.programName}, ${student.dept}`, { align: "center" });
-    doc.moveDown();
-
-    doc.fontSize(10).text(`Email: ${student.email} | Phone: ${student.mobileno}`);
+    // === HEADER ===
     if (student.image?.url) {
-      doc.image(student.image.url, 450, 50, { width: 80, height: 80 });
+      try {
+        const imgBuffer = await fetchImageBuffer(student.image.url);
+        const imgX = doc.page.width - 120;
+        const imgY = 50;
+        const boxSize = 80;
+
+        doc.save();
+        doc.circle(imgX + boxSize / 2, imgY + boxSize / 2, boxSize / 2).clip();
+        doc.image(imgBuffer, imgX - 20, imgY - 20, {
+          width: boxSize + 40,
+          height: boxSize + 40,
+        });
+        doc.restore();
+      } catch (err) {
+        console.warn("Could not load student image:", err.message);
+      }
     }
+
+    // Student Name + Contact
+    doc.fontSize(22).fillColor("#2c3e50").text(student.fullname, { align: "left" });
+    doc.moveDown(0.3);
+    doc.fontSize(12).fillColor("#555555").text(`Email: ${student.email}`);
+    doc.text(`Phone: ${student.mobileno}`);
+    doc.text(`Institution: ${student.institution}`);
+    doc.text(`Department: ${student.dept} | Program: ${student.programName} | Semester: ${student.semester}`);
     doc.moveDown();
 
-    doc.fontSize(14).text("Certifications", { underline: true });
-    student.certifications.forEach((cert) => {
-      doc.fontSize(10).text(`- ${cert.title} (${cert.issuer}, ${new Date(cert.dateIssued).getFullYear()})`);
-    });
-    doc.moveDown();
+    // === Certifications ===
+    if (student.certifications?.length > 0) {
+      addSectionTitle(doc, "Certifications");
+      student.certifications.forEach((cert, idx) => {
+        doc.fontSize(12).list([
+          `${cert.title || cert} (${cert.organization || ""})`,
+        ]);
+      });
+    }
 
-    doc.fontSize(14).text("Workshops", { underline: true });
-    student.workshops.forEach((w) => {
-      doc.fontSize(10).text(`- ${w.title} (${w.organizer}, ${new Date(w.date).toDateString()})`);
-    });
-    doc.moveDown();
+    // === Workshops ===
+    if (student.workshops?.length > 0) {
+      addSectionTitle(doc, "Workshops");
+      student.workshops.forEach((ws) => {
+        doc.fontSize(12).list([
+          `${ws.title || ""} - ${ws.organization || ""} (${ws.date || ""})`,
+        ]);
+      });
+    }
 
-    doc.fontSize(14).text("Internships", { underline: true });
-    student.internships.forEach((i) => {
-      doc.fontSize(10).text(
-        `- ${i.role} at ${i.organization} (${new Date(i.startDate).getFullYear()} - ${i.endDate ? new Date(i.endDate).getFullYear() : "Present"})`
-      );
-    });
-    doc.moveDown();
+    // === Internships ===
+    if (student.internships?.length > 0) {
+      addSectionTitle(doc, "Internships");
+      student.internships.forEach((intern) => {
+        doc.fontSize(12).text(`• ${intern.role} at ${intern.organization}`, { continued: false });
+        if (intern.startDate && intern.endDate) {
+          doc.fillColor("#666666")
+            .fontSize(10)
+            .text(`   ${new Date(intern.startDate).toLocaleDateString()} - ${new Date(intern.endDate).toLocaleDateString()}`);
+        }
+        doc.moveDown(0.3);
+        doc.fillColor("#000000");
+      });
+    }
 
-    doc.fontSize(14).text("Projects", { underline: true });
-    student.projects.forEach((p) => {
-      doc.fontSize(10).text(`- ${p.title}: ${p.description}`);
-    });
+    // === Projects ===
+    if (student.projects?.length > 0) {
+      addSectionTitle(doc, "Projects");
+      student.projects.forEach((proj, idx) => {
+        doc.fontSize(12).text(`${idx + 1}. ${proj.title}`, { underline: true });
+        if (proj.description) doc.fontSize(11).text(`   ${proj.description}`);
+        if (proj.technologies?.length > 0) {
+          doc.fontSize(11).fillColor("#555555").text(`   Tech: ${proj.technologies.join(", ")}`);
+        }
+        if (proj.repoLink) {
+          doc.fillColor("blue").text(`   Repo: ${proj.repoLink}`, { link: proj.repoLink, underline: true });
+        }
+        if (proj.demoLink) {
+          doc.fillColor("blue").text(`   Demo: ${proj.demoLink}`, { link: proj.demoLink, underline: true });
+        }
+        doc.fillColor("#000000").moveDown(0.5);
+      });
+    }
 
-    doc.moveDown();
-    doc.fontSize(8).text(`Generated on ${new Date().toDateString()}`, { align: "center" });
+    // === Footer ===
+    doc.moveDown(2);
+    doc.fontSize(10).fillColor("#888888")
+      .text("Generated by Student Activity Portal", { align: "center" });
 
-    // Finalize
+    // End PDF
     doc.end();
-  } catch (err) {
-    // Handle synchronous errors before PDF starts streaming
-    if (!res.headersSent) {
-      res.status(500).json({ message: "Error generating PDF", error: err.message });
-    } else {
-      console.error("Streaming error after headers sent:", err);
-      res.end();
-    }
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    res.status(500).json({ message: "Failed to generate PDF", error });
   }
 };

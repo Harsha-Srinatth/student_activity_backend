@@ -1,5 +1,6 @@
 // src/controllers/faculty/faculty_students.js
 import StudentDetails from "../../models/studentDetails.js";
+import FacultyDetails from "../../models/facultyDetails.js";
 
 // Get all students under a specific faculty
 export const getStudentsByFaculty = async (req, res) => {
@@ -12,7 +13,7 @@ export const getStudentsByFaculty = async (req, res) => {
 
     // Get students with the specified faculty ID
     const students = await StudentDetails.find({ facultyid })
-      .select('studentid fullname username email image programName semester dateofjoin')
+      .select('studentid fullname username email image programName semester dateofjoin institution mobileno dept')
       .sort({ dateofjoin: -1 }); // Sort by newest first
 
     // Get total count
@@ -92,5 +93,18 @@ export const getStudentDetails = async (req, res) => {
       message: "Failed to fetch student details",
       error: error.message 
     });
+  }
+};
+
+// Get all faculty (for faculty page, no merits)
+export const getAllFaculty = async (req, res) => {
+  try {
+    // Only select basic details needed for the faculty page
+    const facultyList = await FacultyDetails.find({})
+      .select('facultyid fullname institution dept designation email mobile image');
+    res.json({ success: true, faculty: facultyList });
+  } catch (error) {
+    console.error('Error fetching all faculty:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch faculty', error: error.message });
   }
 };

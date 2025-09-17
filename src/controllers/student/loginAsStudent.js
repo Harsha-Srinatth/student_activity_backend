@@ -34,6 +34,7 @@ export const loginAsStudent = async(req,res) => {
             studentid: user.studentid,
             username: user.username,
             email: user.email,
+            hasProfilePic: !!user.image?.url,
         },
         });
     

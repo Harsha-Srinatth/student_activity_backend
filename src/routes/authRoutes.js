@@ -3,16 +3,21 @@ import express from "express";
 import { enqueueFacultyRegistration ,enqueueStudentRegistration} from "../controllers/authController.js";
 import { loginAsStudent } from "../controllers/student/loginAsStudent.js";
 import { loginAsFaculty } from "../controllers/faculty/loginAsFaculty.js";
-import  student_Dashboard_Details from "../controllers/student/student_Dash.js";
+import  student_Dashboard_Details, { getAllStudentApprovals } from "../controllers/student/student_Dash.js";
 import getStudentAchievements from "../controllers/student/student_achievements.js";
 import faculty_Dashboard_Details from "../controllers/faculty/faculty_Dashboard_Details.js"
 import { checkauth , requireRole } from "../middlewares/authCheck.js";
 import studentDocUpload from "../controllers/student/S_Doc_Up.js";
+import AddProfile from "../controllers/student/AddProfile.js";
+import AddProfileF from "../controllers/faculty/AddProfileF.js";
+import updateStudentSettings from "../controllers/student/update_settings.js";
+import updateFacultySettings from "../controllers/faculty/update_settings.js";
 import { generateStudentPortfolioPDF } from "../controllers/student/download_pdf.js";
+import getStudentProfile from "../controllers/student/get_profile.js";
 import { getPendingApprovals, handleApproval, getStudentDetailsFrom, bulkApproval } from "../controllers/faculty/faculty_approve.js";
-import { verifyAchievement, getStudentAchievementsForReview, bulkVerifyAchievements } from "../controllers/faculty/verify_achievements.js";
+import { verifyAchievement, getStudentAchievementsForReview, bulkVerifyAchievements, backfillStudentVerifications } from "../controllers/faculty/verify_achievements.js";
 import { getFacultyActivities, getFacultyMetrics } from "../controllers/faculty/faculty_activities.js";
-import { getStudentsByFaculty, getStudentCountByFaculty, getStudentDetails } from "../controllers/faculty/faculty_students.js";
+import { getStudentsByFaculty, getStudentCountByFaculty, getStudentDetails, getAllFaculty } from "../controllers/faculty/faculty_students.js";
 import upload from "../middlewares/upload.js";
 import { searchStudents } from "../controllers/faculty/searchStudents.js";
 const router = express.Router();
@@ -58,16 +63,47 @@ router.post(
   upload.single("image"),
   studentDocUpload
 );
+//upload student profile 
+router.post("/student/upload-profile-img",
+  checkauth,
+  requireRole("student"),
+  upload.single("studentprofilePhoto"),
+  AddProfile);
+
+//upload faculty profile
+router.post("/faculty/upload-profile-img",
+  checkauth,
+  requireRole("faculty"),
+  upload.single("facultyprofilePhoto"),
+  AddProfileF
+);
+
+// settings update routes
+router.put("/student/settings",
+  checkauth,
+  requireRole("student"),
+  updateStudentSettings
+);
+
+router.put("/faculty/settings",
+  checkauth,
+  requireRole("faculty"),
+  updateFacultySettings
+);
 
 //student dashboard overview 
 router.get("/student/home",checkauth,requireRole("student"),student_Dashboard_Details);
 router.get("/student/achievements",checkauth,requireRole("student"),getStudentAchievements);
+router.get("/student/profile", checkauth, requireRole("student"), getStudentProfile);
 router.get("/faculty/home",checkauth,requireRole("faculty"),faculty_Dashboard_Details)
 
 //faculty approval routes,
 router.get("/faculty/pending-approvals", checkauth, requireRole("faculty"), getPendingApprovals);
-router.get("/faculty/student/:studentid", checkauth, requireRole("faculty"), getStudentDetails);
+router.get("/faculty/student/:studentid", checkauth, requireRole("faculty"), getStudentDetailsFrom);
+router.post("/faculty/approve/:studentid", checkauth, requireRole("faculty"), handleApproval);
+// backward compatibility: accept old path with approvalId or trailing segment
 router.post("/faculty/approve/:studentid/:approvalId", checkauth, requireRole("faculty"), handleApproval);
+router.post("/faculty/approve/:studentid/:approvalId/:extra", checkauth, requireRole("faculty"), handleApproval);
 router.post("/faculty/bulk-approve/:studentid", checkauth, requireRole("faculty"), bulkApproval);
 
 //faculty activities and metrics routes,
@@ -78,6 +114,7 @@ router.get("/faculty/metrics", checkauth, requireRole("faculty"), getFacultyMetr
 router.get("/faculty/students", checkauth, requireRole("faculty"), getStudentsByFaculty);
 router.get("/faculty/students/count", checkauth, requireRole("faculty"), getStudentCountByFaculty);
 router.get("/faculty/student-details/:studentid", checkauth, requireRole("faculty"), getStudentDetails);
+router.get("/faculty/all", checkauth, getAllFaculty);
 
 //faculty search for students
 router.get("/faculty/search",checkauth,requireRole("faculty"),searchStudents);
@@ -89,5 +126,9 @@ router.get("/student/:studentid/portfolio-pdf",checkauth,requireRole("student"),
 router.get("/faculty/student/:studentid/achievements", checkauth, requireRole("faculty"), getStudentAchievementsForReview);
 router.post("/faculty/student/:studentid/verify/:achievementType/:achievementId", checkauth, requireRole("faculty"), verifyAchievement);
 router.post("/faculty/student/:studentid/bulk-verify", checkauth, requireRole("faculty"), bulkVerifyAchievements);
+// one-time sync route to backfill verification fields
+router.post("/faculty/student/:studentid/backfill-verifications", checkauth, requireRole("faculty"), backfillStudentVerifications);
+
+router.get("/student/all-approvals", checkauth, requireRole("student"), getAllStudentApprovals);
 
 export default router;
