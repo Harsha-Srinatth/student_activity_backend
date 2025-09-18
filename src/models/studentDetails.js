@@ -1,5 +1,28 @@
 import mongoose from "mongoose";
 
+
+// Enrollments (track club joining requests)
+const EnrollmentSchema = new mongoose.Schema(
+  {
+    clubId: { type: String, required: true },
+    clubName: { type: String, required: true },
+    studentName: { type: String, required: true },
+    regno: { type: String, required: true },
+    branch: { type: String, required: true },
+    section: { type: String, required: true },
+    dept: { type: String, required: true },
+    phone: { type: String, required: true },
+    email: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 // Sub-schema for certifications
 const CertificationSchema = new mongoose.Schema(
   {
@@ -114,6 +137,37 @@ const ApprovalSchema = new mongoose.Schema(
   }
 );
 
+// Attendance and Academic Records
+const AttendanceEntrySchema = new mongoose.Schema(
+  {
+    date: { type: Date, required: true },
+    period: { type: Number, required: true, min: 1, max: 8 },
+    present: { type: Boolean, default: true },
+    markedByFacultyId: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const MidMarkSchema = new mongoose.Schema(
+  {
+    subjectCode: { type: String, required: true },
+    subjectName: { type: String },
+    max: { type: Number, default: 30 },
+    obtained: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const SemesterRecordSchema = new mongoose.Schema(
+  {
+    semesterNumber: { type: Number, required: true, min: 1, max: 8 },
+    // Each semester has two mids; each mid can have up to 6 subjects as per requirement
+    mid1: { type: [MidMarkSchema], default: [] },
+    mid2: { type: [MidMarkSchema], default: [] },
+  },
+  { _id: false }
+);
+
 // Main Student Schema
 const StudentDetailSchema = new mongoose.Schema(
   {
@@ -154,6 +208,13 @@ const StudentDetailSchema = new mongoose.Schema(
 
     internships: { type: [InternshipSchema], default: [] },
     projects: { type: [ProjectSchema], default: [] },
+
+    // Attendance: Individual daily-period entries
+    attendance: { type: [AttendanceEntrySchema], default: [] },
+    // Enrollments 
+    enrollments: { type: [EnrollmentSchema], default: [] },
+    // Academic records: Up to 8 semesters, each with two mids
+    academicRecords: { type: [SemesterRecordSchema], default: [] },
   },
   {
     timestamps: true,

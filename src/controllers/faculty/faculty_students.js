@@ -13,7 +13,8 @@ export const getStudentsByFaculty = async (req, res) => {
 
     // Get students with the specified faculty ID
     const students = await StudentDetails.find({ facultyid })
-      .select('studentid fullname username email image programName semester dateofjoin institution mobileno dept')
+      // include attendance so frontend can compute percentage
+      .select('studentid fullname username email image programName semester dateofjoin institution mobileno dept attendance')
       .sort({ dateofjoin: -1 }); // Sort by newest first
 
     // Get total count

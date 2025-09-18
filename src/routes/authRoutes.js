@@ -20,6 +20,11 @@ import { getFacultyActivities, getFacultyMetrics } from "../controllers/faculty/
 import { getStudentsByFaculty, getStudentCountByFaculty, getStudentDetails, getAllFaculty } from "../controllers/faculty/faculty_students.js";
 import upload from "../middlewares/upload.js";
 import { searchStudents } from "../controllers/faculty/searchStudents.js";
+import { submitAttendance } from "../controllers/faculty/faculty_attendance.js";
+import { bulkUpsertMidMarks, getResults } from "../controllers/faculty/faculty_marks.js";
+import { getCurriculumBySemester } from "../controllers/faculty/faculty_curriculum.js";
+import getStudentAttendance from "../controllers/student/student_attendance.js";
+import { getEnrollments, enrollInClub } from "../controllers/student/clubEnrollment.js";
 const router = express.Router();
 
 // POST 
@@ -95,6 +100,7 @@ router.put("/faculty/settings",
 router.get("/student/home",checkauth,requireRole("student"),student_Dashboard_Details);
 router.get("/student/achievements",checkauth,requireRole("student"),getStudentAchievements);
 router.get("/student/profile", checkauth, requireRole("student"), getStudentProfile);
+router.get("/student/attendance", checkauth, requireRole("student"), getStudentAttendance);
 router.get("/faculty/home",checkauth,requireRole("faculty"),faculty_Dashboard_Details)
 
 //faculty approval routes,
@@ -130,5 +136,16 @@ router.post("/faculty/student/:studentid/bulk-verify", checkauth, requireRole("f
 router.post("/faculty/student/:studentid/backfill-verifications", checkauth, requireRole("faculty"), backfillStudentVerifications);
 
 router.get("/student/all-approvals", checkauth, requireRole("student"), getAllStudentApprovals);
+
+// New academic & attendance routes
+router.post("/api/attendance", checkauth, requireRole("faculty"), submitAttendance);
+router.get("/api/curriculum", checkauth, getCurriculumBySemester);
+router.post("/api/marks/bulk", checkauth, requireRole("faculty"), bulkUpsertMidMarks);
+router.get("/api/results", checkauth, getResults);
+
+//entrolments 
+router.post("/api/enrollments", checkauth, requireRole("student"), enrollInClub);
+router.get("/api/enrollments", checkauth, requireRole("student"), getEnrollments);
+
 
 export default router;
