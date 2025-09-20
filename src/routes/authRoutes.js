@@ -145,7 +145,7 @@ router.get("/api/results", checkauth, getResults);
 
 //entrolments 
 router.post("/api/enrollments", checkauth, requireRole("student"), enrollInClub);
-router.get("/api/enrollments", checkauth, requireRole("student"), getEnrollments);
+router.get("/api/enrollments/alreadyenrolled", checkauth, requireRole("student"), getEnrollments);
 
 
 export default router;
