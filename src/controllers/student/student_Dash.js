@@ -5,13 +5,13 @@ import FacultyDetails from "../../models/facultyDetails.js";
 
 const student_Dashboard_Details = async (req, res) => {
   try {
-    const { studentid } = req.user; // ⚡ from JWT
+    const { studentid } = req.user; // from JWT
 
     if (!studentid) {
       return res.status(400).json({ message: "Student Id is required" });
     }
 
-    // Use aggregation to calculate counts from pendingApprovals
+    // Aggregation for counts
     const result = await StudentDetails.aggregate([
       { $match: { studentid } },
       {
@@ -28,12 +28,7 @@ const student_Dashboard_Details = async (req, res) => {
               $filter: {
                 input: "$pendingApprovals",
                 as: "item",
-                cond: {
-                  $and: [
-                    { $eq: ["$$item.type", "certificate"] },
-                    { $eq: ["$$item.status", "approved"] }
-                  ]
-                }
+                cond: { $and: [{ $eq: ["$$item.type", "certificate"] }, { $eq: ["$$item.status", "approved"] }] }
               }
             }
           },
@@ -42,12 +37,7 @@ const student_Dashboard_Details = async (req, res) => {
               $filter: {
                 input: "$pendingApprovals",
                 as: "item",
-                cond: {
-                  $and: [
-                    { $eq: ["$$item.type", "workshop"] },
-                    { $eq: ["$$item.status", "approved"] }
-                  ]
-                }
+                cond: { $and: [{ $eq: ["$$item.type", "workshop"] }, { $eq: ["$$item.status", "approved"] }] }
               }
             }
           },
@@ -56,43 +46,21 @@ const student_Dashboard_Details = async (req, res) => {
               $filter: {
                 input: "$pendingApprovals",
                 as: "item",
-                cond: {
-                  $and: [
-                    { $eq: ["$$item.type", "club"] },
-                    { $eq: ["$$item.status", "approved"] }
-                  ]
-                }
+                cond: { $and: [{ $eq: ["$$item.type", "club"] }, { $eq: ["$$item.status", "approved"] }] }
               }
             }
           },
           approvedCount: {
-            $size: {
-              $filter: {
-                input: "$pendingApprovals",
-                as: "item",
-                cond: { $eq: ["$$item.status", "approved"] }
-              }
-            }
+            $size: { $filter: { input: "$pendingApprovals", as: "item", cond: { $eq: ["$$item.status", "approved"] } } }
           },
           rejectedCount: {
-            $size: {
-              $filter: {
-                input: "$pendingApprovals",
-                as: "item",
-                cond: { $eq: ["$$item.status", "rejected"] }
-              }
-            }
+            $size: { $filter: { input: "$pendingApprovals", as: "item", cond: { $eq: ["$$item.status", "rejected"] } } }
           },
           pendingCount: {
-            $size: {
-              $filter: {
-                input: "$pendingApprovals",
-                as: "item",
-                cond: { $eq: ["$$item.status", "pending"] }
-              }
-            }
+            $size: { $filter: { input: "$pendingApprovals", as: "item", cond: { $eq: ["$$item.status", "pending"] } } }
           },
-          pendingApprovals: 1
+          pendingApprovals: 1,
+          profileImage: 1, // ⚡ Include student profile image
         }
       }
     ]);
@@ -103,10 +71,10 @@ const student_Dashboard_Details = async (req, res) => {
 
     const student = result[0];
 
-    // Fetch the full student document for image lookups
+    // Fetch full student document for image lookups
     const fullStudent = await StudentDetails.findOne({ studentid }).lean();
 
-    // Prepare faculty name lookups (student's faculty and any reviewers in approvals)
+    // Prepare faculty name lookups
     const facultyIds = new Set();
     if (fullStudent?.facultyid) facultyIds.add(fullStudent.facultyid);
     for (const appr of (fullStudent?.pendingApprovals || [])) {
@@ -120,7 +88,6 @@ const student_Dashboard_Details = async (req, res) => {
       for (const f of (facs || [])) facultyIdToName.set(f.facultyid, f.fullname);
     }
 
-    // Helper to get image/certificate URL for an approval
     function getApprovalImage(approval) {
       if (!fullStudent) return undefined;
       switch (approval.type) {
@@ -149,7 +116,6 @@ const student_Dashboard_Details = async (req, res) => {
       }
     }
 
-    // Attach image/certificate URL to each approval object
     function attachImageToApprovals(arr) {
       return (arr || []).map(a => ({
         ...a,
@@ -158,7 +124,6 @@ const student_Dashboard_Details = async (req, res) => {
       }));
     }
 
-    // Latest 6 pending approvals
     const latestPendingApprovals = attachImageToApprovals(
       (student.pendingApprovals || [])
         .filter(item => item.status === "pending")
@@ -166,7 +131,6 @@ const student_Dashboard_Details = async (req, res) => {
         .slice(0, 6)
     );
 
-    // Latest 6 rejected approvals
     const latestRejectedApprovals = attachImageToApprovals(
       (student.pendingApprovals || [])
         .filter(item => item.status === "rejected")
@@ -174,7 +138,6 @@ const student_Dashboard_Details = async (req, res) => {
         .slice(0, 6)
     );
 
-    // Latest 6 approved approvals
     const latestApprovedApprovals = attachImageToApprovals(
       (student.pendingApprovals || [])
         .filter(item => item.status === "approved")
@@ -191,6 +154,7 @@ const student_Dashboard_Details = async (req, res) => {
         semester: student.semester,
         dept: student.dept,
         programName: student.programName,
+        profileImage: student.image?.url ? { url: student.profileImage } : null, // ⚡ Added
         faculty: fullStudent?.facultyid ? {
           facultyid: fullStudent.facultyid,
           fullname: facultyIdToName.get(fullStudent.facultyid) || undefined,
@@ -213,6 +177,7 @@ const student_Dashboard_Details = async (req, res) => {
     return res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
+
 
 // Handler to get ALL approvals for the student (not just 6)
 export const getAllStudentApprovals = async (req, res) => {
