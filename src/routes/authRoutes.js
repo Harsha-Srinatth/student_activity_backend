@@ -25,6 +25,14 @@ import { bulkUpsertMidMarks, getResults } from "../controllers/faculty/faculty_m
 import { getCurriculumBySemester } from "../controllers/faculty/faculty_curriculum.js";
 import getStudentAttendance from "../controllers/student/student_attendance.js";
 import { getEnrollments, enrollInClub } from "../controllers/student/clubEnrollment.js";
+import { studentReqForLeave, studentLeaveRequests, getSpecificLeaveReqDetails } from '../controllers/student/leaveReq.js';
+import {
+  getAllPendingLeaveReq,
+  processLeaveReq,
+  getFacultyLeaveStats,
+  getFacultyProfile
+} from '../controllers/faculty/leaveRequests.js';
+
 const router = express.Router();
 
 // POST 
@@ -147,5 +155,20 @@ router.get("/api/results", checkauth, getResults);
 router.post("/api/enrollments", checkauth, requireRole("student"), enrollInClub);
 router.get("/api/enrollments/alreadyenrolled", checkauth, requireRole("student"), getEnrollments);
 
+// leave request routes
+// Submit leave request (already fine)
+router.post("/leave/submit", checkauth, requireRole("student"), studentReqForLeave);
+
+// Get all leave requests for logged-in student
+router.get("/leave/student", checkauth, requireRole("student"), studentLeaveRequests);
+
+// Get specific leave request details for logged-in student
+router.get("/leave/details/:requestId", checkauth, requireRole("student"), getSpecificLeaveReqDetails);
+
+// Faculty leave management
+router.get('/faculty/leave-requests', checkauth, requireRole("faculty"), getAllPendingLeaveReq);
+router.put('/faculty/leave-requests/:studentid/:requestId', checkauth, requireRole("faculty"), processLeaveReq);
+router.get('/faculty/dashboard-stats', checkauth, requireRole("faculty"), getFacultyLeaveStats);
+router.get('/faculty/profile', checkauth, requireRole("faculty"), getFacultyProfile);
 
 export default router;

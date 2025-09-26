@@ -1,5 +1,53 @@
 import mongoose from "mongoose";
 
+// Leave Request Schema (embedded in Student)
+const LeaveRequestSchema = new mongoose.Schema(
+  {
+    leaveType: {
+      type: String,
+      enum: ["medical", "personal", "emergency", "family", "academic", "other"],
+      required: true,
+    },
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
+    totalDays: { type: Number, required: true },
+    reason: { type: String, required: true, maxlength: 500 },
+    
+    // Status and Approval
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    
+    // Faculty Response
+    reviewedBy: { type: String }, // Faculty ID who reviewed
+    reviewedByName: { type: String }, // Faculty name
+    reviewedAt: { type: Date },
+    approvalRemarks: { type: String, maxlength: 300 },
+    
+    // System Timestamps
+    submittedAt: { type: Date, default: Date.now },
+    
+    // Priority Level
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high", "urgent"],
+      default: "medium",
+    },
+    
+    // Emergency Contact (for emergency leaves)
+    emergencyContact: {
+      name: { type: String },
+      phone: { type: String },
+      relation: { type: String },
+    },
+    
+    // Academic Impact
+    alternateAssessmentRequired: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
 
 // Enrollments (track club joining requests)
 const EnrollmentSchema = new mongoose.Schema(
@@ -90,6 +138,7 @@ const InternshipSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+
 //Projects
 const ProjectSchema = new mongoose.Schema(
   {
@@ -180,8 +229,7 @@ const StudentDetailSchema = new mongoose.Schema(
     image: {
       url: {
         type: String,
-        default:
-          "",
+        default: "",
       },
     },
 
@@ -198,7 +246,7 @@ const StudentDetailSchema = new mongoose.Schema(
     dept: { type: String, required: true, index: true },
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
-    facultyid: {type: String,required: true},
+    facultyid: {type: String, required: true},
 
     // Arrays with defaults
     certifications: { type: [CertificationSchema], default: [] },
@@ -208,6 +256,9 @@ const StudentDetailSchema = new mongoose.Schema(
 
     internships: { type: [InternshipSchema], default: [] },
     projects: { type: [ProjectSchema], default: [] },
+
+    // Leave Requests Array
+    leaveRequests: { type: [LeaveRequestSchema], default: [] },
 
     // Attendance: Individual daily-period entries
     attendance: { type: [AttendanceEntrySchema], default: [] },
