@@ -24,7 +24,7 @@ import { submitAttendance } from "../controllers/faculty/faculty_attendance.js";
 import { bulkUpsertMidMarks, getResults } from "../controllers/faculty/faculty_marks.js";
 import { getCurriculumBySemester } from "../controllers/faculty/faculty_curriculum.js";
 import getStudentAttendance from "../controllers/student/student_attendance.js";
-import { getEnrollments, enrollInClub } from "../controllers/student/clubEnrollment.js";
+import { getClubsJoined, enrollInClub } from "../controllers/student/clubEnrollment.js";
 import { studentReqForLeave, studentLeaveRequests, getSpecificLeaveReqDetails } from '../controllers/student/leaveReq.js';
 import {
   getAllPendingLeaveReq,
@@ -68,14 +68,6 @@ router.post("/register/student", enqueueStudentRegistration);
 router.post("/login/as/student", loginAsStudent);
 router.post("/login/as/faculty", loginAsFaculty);
 
-//student Docs Upload
-router.post(
-  "/upload/student/Docs",
-  checkauth,
-  requireRole("student"),
-  upload.single("image"),
-  studentDocUpload
-);
 //upload student profile 
 router.post("/student/upload-profile-img",
   checkauth,
@@ -91,13 +83,22 @@ router.post("/faculty/upload-profile-img",
   AddProfileF
 );
 
-// settings update routes
+//student Docs Upload
+router.post(
+  "/upload/student/Docs",
+  checkauth,
+  requireRole("student"),
+  upload.single("image"),
+  studentDocUpload
+);
+
+// settings update routes for student
 router.put("/student/settings",
   checkauth,
   requireRole("student"),
   updateStudentSettings
 );
-
+//settings update routes for faculty
 router.put("/faculty/settings",
   checkauth,
   requireRole("faculty"),
@@ -153,7 +154,7 @@ router.get("/api/results", checkauth, getResults);
 
 //entrolments 
 router.post("/api/enrollments", checkauth, requireRole("student"), enrollInClub);
-router.get("/api/enrollments/alreadyenrolled", checkauth, requireRole("student"), getEnrollments);
+router.get("/api/enrollments/alreadyenrolled", checkauth, requireRole("student"), getClubsJoined);
 
 // leave request routes
 // Submit leave request (already fine)

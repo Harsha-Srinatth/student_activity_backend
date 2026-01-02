@@ -23,7 +23,7 @@ export const loginAsFaculty = async(req,res) => {
         const token = jwt.sign(
             {
                 facultyid: user.facultyid,
-                username: user.username,
+                collegeId: user.collegeId,
                 email: user.email,
                 role: "faculty", // Add role to JWT token
             },
@@ -34,7 +34,7 @@ export const loginAsFaculty = async(req,res) => {
         token,
         user: {
             facultyid: user.facultyid,
-            username: user.username,
+            collegeId: user.collegeId,
             email: user.email,
             hasProfilePic: !!user.image?.url,
         },

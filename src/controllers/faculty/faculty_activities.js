@@ -11,17 +11,15 @@ const getFacultyActivities = async (req, res) => {
     }
 
     const faculty = await FacultyDetails.findOne({ facultyid: currentFacultyId })
-      .select('recentActivities approvalsGiven')
+      .select('approvalsGiven')
       .lean();
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
     }
 
-    // Get last 20 recent activities, sorted by timestamp (with null safety)
-    const recentActivities = (faculty.recentActivities || [])
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, 20);
+    // Get last 30 recent activities (derived from approvalsGiven and leaveApprovalsGiven)
+    const recentActivities = await FacultyDetails.getRecentActivities(currentFacultyId, 30);
 
     // Get last 10 approvals given (with null safety)
     let recentApprovals = (faculty.approvalsGiven || [])
@@ -71,9 +69,9 @@ const getFacultyActivities = async (req, res) => {
     }
 
     const response = {
-      recentActivities,
+      recentActivities: recentActivities.slice(0, 20), // Return last 20 for display
       recentApprovals,
-      totalActivities: faculty.recentActivities?.length || 0,
+      totalActivities: recentActivities.length,
       totalApprovals: faculty.approvalsGiven?.length || 0
     };
 
@@ -95,20 +93,19 @@ const getFacultyMetrics = async (req, res) => {
     }
 
     const faculty = await FacultyDetails.findOne({ facultyid: currentFacultyId })
-      .select('dashboardStats approvalsGiven averageApprovalTime totalHoursWorked lastLogin')
+      .select('approvalsGiven lastLogin')
       .lean();
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
     }
 
-    // Calculate additional metrics
+    // Calculate metrics dynamically from approvals
     const approvals = faculty.approvalsGiven || [];
     const approvedCount = approvals.filter(a => a.status === 'approved').length;
     const rejectedCount = approvals.filter(a => a.status === 'rejected').length;
-    
-    // Calculate average approval time (if we have timestamps)
-    let avgApprovalTime = faculty.averageApprovalTime || 0;
+    const totalApprovals = approvedCount + rejectedCount;
+    const approvalRate = totalApprovals > 0 ? Math.round((approvedCount / totalApprovals) * 100) : 0;
     
     // Calculate this week's activity
     const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -117,14 +114,12 @@ const getFacultyMetrics = async (req, res) => {
     ).length;
 
     const metrics = {
-      ...faculty.dashboardStats,
       performance: {
-        approvalRate: faculty.dashboardStats?.approvalRate || 0,
-        averageApprovalTime: avgApprovalTime,
-        totalHoursWorked: faculty.totalHoursWorked || 0,
+        approvalRate,
         thisWeekActivity: thisWeekApprovals,
         approvedCount,
         rejectedCount,
+        totalApprovals,
         lastLogin: faculty.lastLogin
       }
     };

@@ -1,5 +1,20 @@
 import mongoose from "mongoose";
 
+// Verification Schema for achievements
+const VerificationSchema = new mongoose.Schema(
+  {
+    verifiedBy: { type: String }, // Faculty ID who verified
+    date: { type: Date }, // Date of verification
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    remarks: { type: String }, // Additional remarks from faculty
+  },
+  { _id: false }
+);
+
 // Leave Request Schema (embedded in Student)
 const LeaveRequestSchema = new mongoose.Schema(
   {
@@ -22,7 +37,6 @@ const LeaveRequestSchema = new mongoose.Schema(
     
     // Faculty Response
     reviewedBy: { type: String }, // Faculty ID who reviewed
-    reviewedByName: { type: String }, // Faculty name
     reviewedAt: { type: Date },
     approvalRemarks: { type: String, maxlength: 300 },
     
@@ -49,18 +63,11 @@ const LeaveRequestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Enrollments (track club joining requests)
+// Enrollments (track enrollment requests)
 const EnrollmentSchema = new mongoose.Schema(
   {
-    clubId: { type: String, required: true },
-    clubName: { type: String, required: true },
-    studentName: { type: String, required: true },
-    regno: { type: String, required: true },
-    branch: { type: String, required: true },
-    section: { type: String, required: true },
-    dept: { type: String, required: true },
-    phone: { type: String, required: true },
-    email: { type: String, required: true },
+    enrollmentId: { type: String, required: true },
+    enrollmentName: { type: String, required: true },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],
@@ -78,12 +85,7 @@ const CertificationSchema = new mongoose.Schema(
     issuer: { type: String },
     dateIssued: { type: Date },
     imageUrl: { type: String },
-    verification: {
-      verifiedBy: { type: String },
-      date: { type: Date },
-      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
-      remarks: { type: String },
-    },
+    verification: VerificationSchema,
   }
 );
 
@@ -94,12 +96,8 @@ const WorkshopSchema = new mongoose.Schema(
     organizer: { type: String },
     date: { type: Date },
     certificateUrl: { type: String },
-    verification: {
-      verifiedBy: { type: String },
-      date: { type: Date },
-      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
-      remarks: { type: String },
-    },
+    imageUrl: { type: String },
+    verification: VerificationSchema,
   }
 );
 
@@ -107,15 +105,12 @@ const WorkshopSchema = new mongoose.Schema(
 const ClubSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+    clubId: { type: String },
     role: { type: String, default: "member" },
     joinedOn: { type: Date, default: Date.now },
+    amountPaid: { type: Number, default: 0 },
     imageUrl: { type: String },
-    verification: {
-      verifiedBy: { type: String },
-      date: { type: Date },
-      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
-      remarks: { type: String },
-    },
+    verification: VerificationSchema,
   }
 );
 
@@ -126,20 +121,15 @@ const InternshipSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     description: { type: String },
-    projects: [String],
     recommendationUrl: { type: String },
-    imageUrl: {type: String},
-    verification: {
-      verifiedBy: { type: String },
-      date: { type: Date },
-      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
-      remarks: { type: String },
-    },
+    projectUrl: { type: String },
+    imageUrl: { type: String },
+    verification: VerificationSchema,
   },
   { _id: false }
 );
 
-//Projects
+// Projects
 const ProjectSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
@@ -149,40 +139,7 @@ const ProjectSchema = new mongoose.Schema(
     repoLink: { type: String },
     demoLink: { type: String },
     imageUrl: { type: String },
-    verification: {
-      verifiedBy: { type: String },
-      date: { type: Date },
-      status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
-      remarks: { type: String },
-    },
-  }
-);
-
-// Sub-schema for pending approvals
-const ApprovalSchema = new mongoose.Schema(
-  {
-    type: {
-      type: String,
-      enum: [
-        "certificate",
-        "workshop",
-        "club",
-        "internship",
-        "project",
-        "other",
-      ],
-      required: true,
-    },
-    description: { type: String },
-    requestedOn: { type: Date, default: Date.now },
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
-    reviewedOn: { type: Date },
-    reviewedBy: { type: String }, // facultyid or name
-    message: { type: String }, // remarks/feedback
+    verification: VerificationSchema,
   }
 );
 
@@ -221,6 +178,7 @@ const SemesterRecordSchema = new mongoose.Schema(
 const StudentDetailSchema = new mongoose.Schema(
   {
     studentid: { type: String, required: true, unique: true, index: true },
+    collegeId: { type: String, required: true },
     fullname: { type: String, required: true },
     username: { type: String, required: true, unique: true, index: true },
     email: { type: String, required: true, unique: true, index: true },
@@ -239,31 +197,30 @@ const StudentDetailSchema = new mongoose.Schema(
       default: "student",
       required: true,
     },
-
+    // Contact Information
     mobileno: { type: String, unique: true, required: true, index: true },
-    institution: { type: String, required: true, index: true },
     programName: { type: String, required: true },
     dept: { type: String, required: true, index: true },
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
     facultyid: {type: String, required: true},
 
-    // Arrays with defaults
+    // Certifications
     certifications: { type: [CertificationSchema], default: [] },
+    // Workshops
     workshops: { type: [WorkshopSchema], default: [] },
+    // Clubs
     clubsJoined: { type: [ClubSchema], default: [] },
-    pendingApprovals: { type: [ApprovalSchema], default: [] },
-
-    internships: { type: [InternshipSchema], default: [] },
-    projects: { type: [ProjectSchema], default: [] },
-
-    // Leave Requests Array
-    leaveRequests: { type: [LeaveRequestSchema], default: [] },
-
-    // Attendance: Individual daily-period entries
-    attendance: { type: [AttendanceEntrySchema], default: [] },
     // Enrollments 
     enrollments: { type: [EnrollmentSchema], default: [] },
+    // Internships
+    internships: { type: [InternshipSchema], default: [] },
+    // Projects
+    projects: { type: [ProjectSchema], default: [] },
+    // Leave Requests Array
+    leaveRequests: { type: [LeaveRequestSchema], default: [] },
+    // Attendance: Individual daily-period entries
+    attendance: { type: [AttendanceEntrySchema], default: [] },
     // Academic records: Up to 8 semesters, each with two mids
     academicRecords: { type: [SemesterRecordSchema], default: [] },
   },

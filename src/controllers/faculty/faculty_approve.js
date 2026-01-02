@@ -203,35 +203,7 @@ const handleApproval = async (req, res) => {
           $inc: { approvalsCount: 1 }
         }
       );
-      // Add recent activity
-      await FacultyDetails.findOneAndUpdate(
-        { facultyid: currentFacultyId },
-        { 
-          $push: { 
-            recentActivities: {
-              studentid: student.studentid,
-              studentName: student.fullname,
-              action: action === 'approve' ? 'approved' : 'rejected',
-              type: type,
-              description: description,
-              timestamp: new Date()
-            }
-          }
-        }
-      );
-      // Invalidate cached stats to force refresh
-      await FacultyDetails.findOneAndUpdate(
-        { facultyid: currentFacultyId },
-        { 
-          $unset: { 
-            'dashboardStats.totalStudents': 1,
-            'dashboardStats.pendingApprovals': 1,
-            'dashboardStats.approvedCertifications': 1,
-            'dashboardStats.approvedWorkshops': 1,
-            'dashboardStats.approvedClubs': 1
-          }
-        }
-      );
+      // Note: Recent activities are derived from approvalsGiven, no need to store separately
     } catch (facultyUpdateError) {
       console.error('Error updating faculty statistics:', facultyUpdateError);
       // Don't fail the main operation if faculty stats update fails

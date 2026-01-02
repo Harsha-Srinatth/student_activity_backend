@@ -1,4 +1,3 @@
-
 services:
   redis:
     image: redis:7
@@ -15,10 +14,13 @@ services:
       dockerfile: Dockerfile
     container_name: student_activity_backend
     ports:
-      - "5000:5000"
+      - "8000:5000"  # Host:Container - using 8000 to avoid Windows port 5000 reservation
     depends_on:
       - redis
     environment:
+      NODE_ENV: production
+      PORT: 5000
+      HOST: 0.0.0.0
       MONGO_URL: mongodb+srv://harhsasrinatth5599:harsha5599@cluster0.4uagd3j.mongodb.net/
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -33,6 +35,7 @@ services:
     depends_on:
       - redis
     environment:
+      NODE_ENV: production
       MONGO_URL: mongodb+srv://harhsasrinatth5599:harsha5599@cluster0.4uagd3j.mongodb.net/
       REDIS_HOST: redis
       REDIS_PORT: 6379

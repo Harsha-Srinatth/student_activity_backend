@@ -22,7 +22,7 @@ export const loginAsStudent = async(req,res) => {
         const token = jwt.sign(
             {
                 studentid: user.studentid, // <-- important fix
-                username: user.username,
+                collegeId: user.collegeId,
                 role: "student", // Add role to JWT token
             },
             process.env.MY_SECRET_KEY,
@@ -32,8 +32,7 @@ export const loginAsStudent = async(req,res) => {
         token,
         user: {
             studentid: user.studentid,
-            username: user.username,
-            email: user.email,
+            collegeId: user.collegeId,
             hasProfilePic: !!user.image?.url,
         },
         });

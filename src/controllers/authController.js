@@ -8,9 +8,9 @@ import StudentDetails from "../models/studentDetails.js";
 // Validation schema
 const facultySchema = Joi.object({
   facultyid: Joi.string().trim().required(),
+  collegeId: Joi.string().trim().required(),
   fullname: Joi.string().trim().min(2).required(),
   username: Joi.string().trim().min(3).required(),
-  institution: Joi.string().trim().required(),
   dept: Joi.string().trim().required(),
   email: Joi.string().email().required(),
   mobile: Joi.string().pattern(/^[0-9+ -]{7,20}$/).optional().allow(""),
@@ -21,9 +21,9 @@ const facultySchema = Joi.object({
 //validate student details
 const studentSchema = Joi.object({
   studentid: Joi.string().trim().required(),
+  collegeId: Joi.string().trim().required(),
   fullname: Joi.string().trim().min(2).required(),
   username: Joi.string().trim().min(3).required(),
-  institution: Joi.string().trim().required(),
   dept: Joi.string().trim().required(),
   email: Joi.string().email().required(),
   mobileno: Joi.string().pattern(/^[0-9+ -]{7,20}$/).required(),
@@ -47,9 +47,9 @@ export const enqueueFacultyRegistration = async (req, res) => {
     // Create faculty document
     const facultyDoc = {
       facultyid: value.facultyid,
+      collegeId: value.collegeId,
       fullname: value.fullname,
       username: value.username,
-      institution: value.institution,
       dept: value.dept,
       email: value.email,
       mobile: value.mobile,
@@ -86,9 +86,9 @@ export const enqueueStudentRegistration = async (req, res) => {
     // Create student document
     const studentDoc = {
       studentid: value.studentid,
+      collegeId: value.collegeId,
       fullname: value.fullname,
       username: value.username,
-      institution: value.institution,
       dept: value.dept,
       email: value.email,
       mobileno: value.mobileno,

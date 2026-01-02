@@ -9,31 +9,16 @@ const faculty_Dashboard_Details = async (req, res) => {
       return res.status(401).json({ error: 'Faculty ID not found in token' });
     }
 
-    // Get faculty information with cached stats
+    // Get faculty information
     const faculty = await FacultyDetails.findOne({ facultyid: currentFacultyId })
-      .select('fullname facultyid institution dept designation dashboardStats approvalsCount lastLogin email mobile username dateofjoin image');
+      .select('fullname facultyid institution dept designation approvalsCount lastLogin email mobile username dateofjoin image');
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
     }
 
-    // Check if stats need refresh (refresh every 5 minutes)
-    const now = new Date();
-    const lastUpdate = faculty.dashboardStats?.lastUpdated || new Date(0);
-    const timeDiff = (now - lastUpdate) / (1000 * 60); // minutes
-
-    let dashboardStats;
-
-    if (timeDiff > 5 || !faculty.dashboardStats?.totalStudents) {
-      // Calculate fresh statistics
-      dashboardStats = await calculateFacultyStats(currentFacultyId);
-      
-      // Update faculty stats in database
-      await FacultyDetails.updateFacultyStats(currentFacultyId, dashboardStats);
-    } else {
-      // Use cached stats
-      dashboardStats = faculty.dashboardStats;
-    }
+    // Calculate statistics dynamically (always fresh)
+    const dashboardStats = await calculateFacultyStats(currentFacultyId);
 
     // Update last login
     await FacultyDetails.findOneAndUpdate(
@@ -57,7 +42,7 @@ const faculty_Dashboard_Details = async (req, res) => {
         approvalsCount: faculty.approvalsCount,
       },
       stats: dashboardStats,
-      lastUpdated: dashboardStats.lastUpdated
+      lastUpdated: new Date()
     };
 
     res.json(response);
@@ -132,6 +117,23 @@ async function calculateFacultyStats(facultyId) {
             } 
           },
           { $count: "count" }
+        ],
+        
+        // Leave request statistics
+        pendingLeaveRequests: [
+          { $unwind: "$leaveRequests" },
+          { $match: { "leaveRequests.status": "pending" } },
+          { $count: "count" }
+        ],
+        approvedLeaveRequests: [
+          { $unwind: "$leaveRequests" },
+          { $match: { "leaveRequests.status": "approved" } },
+          { $count: "count" }
+        ],
+        rejectedLeaveRequests: [
+          { $unwind: "$leaveRequests" },
+          { $match: { "leaveRequests.status": "rejected" } },
+          { $count: "count" }
         ]
       }
     }
@@ -146,6 +148,9 @@ async function calculateFacultyStats(facultyId) {
   const approvedWorkshops = result.approvedWorkshops[0]?.count || 0;
   const approvedClubs = result.approvedClubs[0]?.count || 0;
   const totalApprovals = result.totalApprovals[0]?.count || 0;
+  const pendingLeaveRequests = result.pendingLeaveRequests[0]?.count || 0;
+  const approvedLeaveRequests = result.approvedLeaveRequests[0]?.count || 0;
+  const rejectedLeaveRequests = result.rejectedLeaveRequests[0]?.count || 0;
   
   const totalApproved = approvedCertifications + approvedWorkshops + approvedClubs;
   const approvalRate = totalApprovals > 0 ? Math.round((totalApproved / totalApprovals) * 100) : 0;
@@ -159,6 +164,9 @@ async function calculateFacultyStats(facultyId) {
     totalApproved,
     totalApprovals,
     approvalRate,
+    pendingLeaveRequests,
+    approvedLeaveRequests,
+    rejectedLeaveRequests,
     lastUpdated: new Date()
   };
 }

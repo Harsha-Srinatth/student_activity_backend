@@ -3,16 +3,12 @@ import StudentDetails from "../../models/studentDetails.js";
 // Upload certificate/workshop/club/internship/project proof
 const studentDocUpload = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
     const {
       type,
       title,
       issuer,
       organizer,
-      organization, // fixed
+      organization,
       role,
       startDate,
       endDate,
@@ -23,6 +19,8 @@ const studentDocUpload = async (req, res) => {
       outcome,
       recommendationUrl,
       date,
+      dateIssued,
+      certificateUrl,
     } = req.body;
 
     const studentid = req.user.studentid;
@@ -31,18 +29,23 @@ const studentDocUpload = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // File uploaded → Cloudinary URL
+    // File uploaded → Cloudinary URL (optional for "other" type)
     const fileUrl = req.file?.path || req.file?.secure_url;
+    const requiresFile = type !== "other";
+    
+    if (requiresFile && !req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
     // Validate required fields for each type
     if (type === "certificate") {
-      if (!title || !issuer) {
-        return res.status(400).json({ error: "Title and Issuer are required for certificates." });
+      if (!title) {
+        return res.status(400).json({ error: "Title is required for certificates." });
       }
       student.certifications.push({
         title,
         issuer,
-        dateIssued: date,
+        dateIssued: dateIssued || date,
         imageUrl: fileUrl,
         verification: { status: "pending" },
       });
@@ -52,14 +55,15 @@ const studentDocUpload = async (req, res) => {
         verification: { status: "pending" },
       });
     } else if (type === "workshop") {
-      if (!title || !organizer) {
-        return res.status(400).json({ error: "Title and Organizer are required for workshops." });
+      if (!title) {
+        return res.status(400).json({ error: "Title is required for workshops." });
       }
       student.workshops.push({
         title,
         organizer,
         date,
-        certificateUrl: fileUrl,
+        certificateUrl: certificateUrl || fileUrl,
+        imageUrl: fileUrl,
         verification: { status: "pending" },
       });
       student.pendingApprovals.push({
@@ -72,8 +76,9 @@ const studentDocUpload = async (req, res) => {
       }
       student.clubsJoined.push({
         name: title,
+        clubId: title.toLowerCase().replace(/\s+/g, "-"),
         role: role || "member",
-        joinedOn: date,
+        joinedOn: date || new Date(),
         imageUrl: fileUrl,
         verification: { status: "pending" },
       });

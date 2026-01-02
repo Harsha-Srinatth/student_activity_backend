@@ -49,8 +49,7 @@ app.use("/register", limiter);
 // MongoDB connection
 // -------------------------------
 const MONGO_URL =
-  process.env.MONGO_URL ||
-  "mongodb://127.0.0.1:27017/facultydb"; // fallback for local dev
+  process.env.MONGO_URL; // fallback for local dev
 
 mongoose
   .connect(MONGO_URL, {
@@ -64,16 +63,6 @@ mongoose
     process.exit(1);
   });
 
-// -------------------------------
-// Redis Queue (Disabled - using direct DB insertion)
-// -------------------------------
-// Detect whether running in Docker (REDIS_HOST=redis) or local (127.0.0.1)
-// process.env.REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
-// process.env.REDIS_PORT = process.env.REDIS_PORT || "6379";
-
-// createRegistrationQueue(); // Disabled since we're using direct DB insertion
-
-// Routes
 app.use("/", authRoutes);
 
 // Global JSON error handler (captures Multer/Cloudinary and other errors)
@@ -88,5 +77,8 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json({ error: message, details });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => logger.info(`Server listening on port ${PORT}`));
+const PORT = process.env.PORT || 3000;
+// Listen on 127.0.0.1 (IPv4) for local dev, 0.0.0.0 for Docker
+// Using 127.0.0.1 instead of localhost to avoid IPv6 (::1) permission issues on Windows
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+app.listen(PORT, HOST, () => logger.info(`Server listening on ${HOST}:${PORT}`));

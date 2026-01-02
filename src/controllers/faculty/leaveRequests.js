@@ -130,32 +130,13 @@ export const processLeaveReq = async (req, res) => {
       approvalRemarks: approvalRemarks || ''
     });
 
-    faculty.recentActivities.push({
-      studentid: studentid,
-      studentName: student.fullname,
-      action: status,
-      type: 'leave_request',
-      description: `${status.charAt(0).toUpperCase() + status.slice(1)} ${leaveRequest.leaveType} leave request`,
-      timestamp: new Date()
-    });
-
-    if (faculty.recentActivities.length > 50) {
-      faculty.recentActivities = faculty.recentActivities.slice(-50);
-    }
-
-    const statsUpdate = {
-      [`dashboardStats.${status}LeaveRequests`]: 1,
-      'dashboardStats.pendingLeaveRequests': -1
-    };
-
+    // Update faculty with leave approval
+    // Note: Recent activities are derived from leaveApprovalsGiven, no need to store separately
     await FacultyDetails.findOneAndUpdate(
       { facultyid: facultyid },
       { 
-        $inc: statsUpdate,
         $set: { 
-          'dashboardStats.lastUpdated': new Date(),
-          leaveApprovalsGiven: faculty.leaveApprovalsGiven,
-          recentActivities: faculty.recentActivities
+          leaveApprovalsGiven: faculty.leaveApprovalsGiven
         }
       }
     );
@@ -196,6 +177,9 @@ export const getFacultyLeaveStats = async (req, res) => {
       }
     });
 
+    // Get recent activities (derived from approvals)
+    const recentActivities = await FacultyDetails.getRecentActivities(facultyid, 10);
+
     const stats = {
       totalStudents: students.length,
       totalLeaveRequests,
@@ -203,13 +187,14 @@ export const getFacultyLeaveStats = async (req, res) => {
       approvedLeaveRequests,
       rejectedLeaveRequests,
       approvalRate: totalLeaveRequests > 0 ? Math.round((approvedLeaveRequests / totalLeaveRequests) * 100) : 0,
-      recentActivities: faculty.recentActivities.slice(-10),
+      recentActivities,
       lastUpdated: new Date()
     };
 
+    // Update last login only - stats are calculated dynamically
     await FacultyDetails.findOneAndUpdate(
       { facultyid: facultyid },
-      { $set: { 'dashboardStats': stats, lastLogin: new Date() } }
+      { $set: { lastLogin: new Date() } }
     );
 
     res.json({ success: true, data: stats });

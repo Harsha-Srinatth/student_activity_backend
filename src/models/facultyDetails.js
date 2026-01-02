@@ -1,15 +1,17 @@
 import mongoose from "mongoose";
 
-// Sub-schema for leave request approvals handled by faculty
+// Sub-Schemas
+
+// Leave approval tracking schema
 const LeaveApprovalActionSchema = new mongoose.Schema(
   {
-    studentid: { type: String, required: true },
+    studentid: { type: String, required: true, index: true },
     studentName: { type: String, required: true },
-    leaveRequestId: { type: String, required: true }, // ObjectId as string
-    leaveType: { 
-      type: String, 
-      enum: ["medical", "personal", "emergency", "family", "academic", "other"], 
-      required: true 
+    leaveRequestId: { type: String, required: true },
+    leaveType: {
+      type: String,
+      enum: ["medical", "personal", "emergency", "family", "academic", "other"],
+      required: true,
     },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
@@ -20,118 +22,69 @@ const LeaveApprovalActionSchema = new mongoose.Schema(
       enum: ["low", "medium", "high", "urgent"],
       required: true,
     },
-    status: { 
-      type: String, 
-      enum: ["approved", "rejected"], 
-      required: true 
+    status: {
+      type: String,
+      enum: ["approved", "rejected"],
+      required: true,
     },
-    approvedOn: { type: Date, default: Date.now },
-    reviewedBy: { type: String, required: true },
+    approvedOn: { type: Date, default: Date.now, index: true },
     approvalRemarks: { type: String, maxlength: 300 },
   },
   { _id: false }
 );
 
-// Sub-schema for approvals handled by faculty
+// Achievement/activity approval tracking schema
 const ApprovalActionSchema = new mongoose.Schema(
   {
-    studentid: { type: String, required: true },
+    studentid: { type: String, required: true, index: true },
     studentName: { type: String, required: true },
-    institution: { type: String },
-    type: { 
-      type: String, 
-      enum: ["certificate", "workshop", "club", "internship", "project", "other"], 
-      required: true 
+    type: {
+      type: String,
+      enum: ["certificate", "workshop", "club", "internship", "project", "other"],
+      required: true,
+      index: true,
     },
     description: { type: String },
-    status: { 
-      type: String, 
-      enum: ["approved", "rejected"], 
-      required: true 
+    status: {
+      type: String,
+      enum: ["approved", "rejected"],
+      required: true,
     },
-    approvedOn: { type: Date, default: Date.now },
-    reviewedBy: { type: String },
+    approvedOn: { type: Date, default: Date.now, index: true },
     imageUrl: { type: String },
-    message: { type: String },
+    message: { type: String, maxlength: 500 },
   },
   { _id: false }
 );
-
-// Sub-schema for faculty dashboard statistics
-const FacultyStatsSchema = new mongoose.Schema(
-  {
-    totalStudents: { type: Number, default: 0 },
-    pendingApprovals: { type: Number, default: 0 },
-    pendingLeaveRequests: { type: Number, default: 0 },
-    approvedLeaveRequests: { type: Number, default: 0 },
-    rejectedLeaveRequests: { type: Number, default: 0 },
-    totalLeaveRequests: { type: Number, default: 0 },
-    approvedCertifications: { type: Number, default: 0 },
-    approvedWorkshops: { type: Number, default: 0 },
-    approvedClubs: { type: Number, default: 0 },
-    totalApproved: { type: Number, default: 0 },
-    totalApprovals: { type: Number, default: 0 },
-    approvalRate: { type: Number, default: 0 },
-    lastUpdated: { type: Date, default: Date.now },
-  },
-  { _id: false }
-);
-
-// Sub-schema for recent activity tracking
-const RecentActivitySchema = new mongoose.Schema(
-  {
-    studentid: { type: String, required: true },
-    studentName: { type: String, required: true },
-    action: { 
-      type: String, 
-      enum: ["approved", "rejected", "viewed"], 
-      required: true 
-    },
-    type: { 
-      type: String, 
-      enum: ["certificate", "workshop", "club", "internship", "project", "leave_request", "other"], 
-      required: true 
-    },
-    description: { type: String },
-    timestamp: { type: Date, default: Date.now },
-  },
-  { _id: false }
-);
-
+//Mian Faculty Schema
 const FacultySchema = new mongoose.Schema(
   {
+    // Basic Information
     facultyid: { type: String, required: true, unique: true, index: true },
-    fullname: { type: String, required: true },
+    fullname: { type: String, required: true, index: true },
     username: { type: String, required: true, unique: true, index: true },
-    institution: { type: String, required: true },
-    dept: { type: String, required: true },
+    collegeId: { type: String, required: true, index: true },
+    dept: { type: String, required: true, index: true },
     designation: { type: String, default: "Faculty" },
 
+    // Contact Information
     email: { type: String, required: true, unique: true, index: true },
-    mobile: { type: String },
+    mobile: { type: String, index: true },
     password: { type: String, required: true },
     dateofjoin: { type: Date, required: true },
 
+    // Profile Image
     image: {
       url: { type: String },
     },
 
-    // Leave request approvals
+    // Login Tracking
+    lastLogin: { type: Date, index: true },
+
+    // Approval Tracking
     leaveApprovalsGiven: { type: [LeaveApprovalActionSchema], default: [] },
-    
-    // Other approvals and statistics tracking
     approvalsGiven: { type: [ApprovalActionSchema], default: [] },
-    dashboardStats: { type: FacultyStatsSchema, default: {} },
-    recentActivities: { type: [RecentActivitySchema], default: [] },
-    
-    // Legacy field for backward compatibility
-    approvalsCount: { type: Number, default: 0 },
-    
-    // Performance metrics
-    averageApprovalTime: { type: Number, default: 0 },
-    totalHoursWorked: { type: Number, default: 0 },
-    lastLogin: { type: Date, default: Date.now },
-    
+
     // Preferences
     notificationsEnabled: { type: Boolean, default: true },
     emailNotifications: { type: Boolean, default: true },
@@ -139,51 +92,130 @@ const FacultySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-FacultySchema.index({ institution: 1, dept: 1 });
+// Compound indexes for common queries
+FacultySchema.index({ collegeId: 1, dept: 1 });
+FacultySchema.index({ "approvalsGiven.approvedOn": -1 }); // For efficient recent activities query
+FacultySchema.index({ "leaveApprovalsGiven.approvedOn": -1 }); // For efficient recent activities query
 
-// Instance methods
-FacultySchema.methods.updateStats = function(stats) {
-  this.dashboardStats = { ...this.dashboardStats, ...stats, lastUpdated: new Date() };
+/**
+ * Get recent activities (derived from approvalsGiven and leaveApprovalsGiven)
+ * Returns last N activities sorted by timestamp
+ */
+FacultySchema.methods.getRecentActivities = function (limit = 30) {
+  const activities = [];
+  
+  // Convert approvalsGiven to activity format
+  this.approvalsGiven.forEach(approval => {
+    activities.push({
+      studentid: approval.studentid,
+      studentName: approval.studentName,
+      action: approval.status, // "approved" or "rejected"
+      type: approval.type,
+      description: approval.description,
+      timestamp: approval.approvedOn,
+      imageUrl: approval.imageUrl,
+      message: approval.message,
+    });
+  });
+  
+  // Convert leaveApprovalsGiven to activity format
+  this.leaveApprovalsGiven.forEach(leaveApproval => {
+    activities.push({
+      studentid: leaveApproval.studentid,
+      studentName: leaveApproval.studentName,
+      action: leaveApproval.status, // "approved" or "rejected"
+      type: "leave_request",
+      description: `${leaveApproval.status.charAt(0).toUpperCase() + leaveApproval.status.slice(1)} ${leaveApproval.leaveType} leave request`,
+      timestamp: leaveApproval.approvedOn,
+      approvalRemarks: leaveApproval.approvalRemarks,
+    });
+  });
+  
+  // Sort by timestamp (newest first) and return last N
+  return activities
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, limit);
+};
+
+/**
+ * Record an approval action
+ * Used when faculty approves/rejects student achievements
+ */
+FacultySchema.methods.recordApproval = function (approvalData) {
+  this.approvalsGiven.push({
+    ...approvalData,
+    approvedOn: new Date(),
+  });
   return this.save();
 };
 
-FacultySchema.methods.addRecentActivity = function(activity) {
-  if (this.recentActivities.length >= 50) {
-    this.recentActivities = this.recentActivities.slice(-49);
-  }
-  this.recentActivities.push(activity);
+/**
+ * Record a leave approval action
+ * Used when faculty approves/rejects leave requests
+ */
+FacultySchema.methods.recordLeaveApproval = function (leaveApprovalData) {
+  this.leaveApprovalsGiven.push({
+    ...leaveApprovalData,
+    approvedOn: new Date(),
+  });
   return this.save();
 };
 
-FacultySchema.methods.recordApproval = function(approvalData) {
-  this.approvalsGiven.push(approvalData);
-  this.approvalsCount = this.approvalsGiven.length;
-  return this.save();
-};
 
-FacultySchema.methods.recordLeaveApproval = function(leaveApprovalData) {
-  this.leaveApprovalsGiven.push(leaveApprovalData);
-  return this.save();
-};
-
-// Static methods
-FacultySchema.statics.getFacultyStats = function(facultyId) {
+/**
+ * Get faculty approvals (for stats calculation)
+ * Note: Dashboard stats are calculated dynamically, not stored
+ */
+FacultySchema.statics.getFacultyApprovals = function (facultyId) {
   return this.findOne({ facultyid: facultyId })
-    .select('dashboardStats approvalsGiven leaveApprovalsGiven recentActivities')
+    .select("approvalsGiven leaveApprovalsGiven")
     .lean();
 };
 
-FacultySchema.statics.updateFacultyStats = async function(facultyId, stats) {
-  return this.findOneAndUpdate(
-    { facultyid: facultyId },
-    { 
-      $set: { 
-        'dashboardStats': { ...stats, lastUpdated: new Date() },
-        'lastLogin': new Date()
-      }
-    },
-    { new: true }
-  );
+/**
+ * Get recent activities for faculty (derived from approvals)
+ * Returns last N activities sorted by timestamp
+ */
+FacultySchema.statics.getRecentActivities = async function (facultyId, limit = 30) {
+  const faculty = await this.findOne({ facultyid: facultyId })
+    .select("approvalsGiven leaveApprovalsGiven")
+    .lean();
+  
+  if (!faculty) return [];
+  
+  const activities = [];
+  
+  // Convert approvalsGiven to activity format
+  (faculty.approvalsGiven || []).forEach(approval => {
+    activities.push({
+      studentid: approval.studentid,
+      studentName: approval.studentName,
+      action: approval.status,
+      type: approval.type,
+      description: approval.description,
+      timestamp: approval.approvedOn,
+      imageUrl: approval.imageUrl,
+      message: approval.message,
+    });
+  });
+  
+  // Convert leaveApprovalsGiven to activity format
+  (faculty.leaveApprovalsGiven || []).forEach(leaveApproval => {
+    activities.push({
+      studentid: leaveApproval.studentid,
+      studentName: leaveApproval.studentName,
+      action: leaveApproval.status,
+      type: "leave_request",
+      description: `${leaveApproval.status.charAt(0).toUpperCase() + leaveApproval.status.slice(1)} ${leaveApproval.leaveType} leave request`,
+      timestamp: leaveApproval.approvedOn,
+      approvalRemarks: leaveApproval.approvalRemarks,
+    });
+  });
+  
+  // Sort by timestamp (newest first) and return last N
+  return activities
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, limit);
 };
 
 const FacultyDetails = mongoose.model("Faculty", FacultySchema);

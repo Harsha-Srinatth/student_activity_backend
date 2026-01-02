@@ -1,7 +1,10 @@
 import StudentDetails from "../../models/studentDetails.js";
 
-// GET /student/attendance
-// Returns attendance stats for the logged-in student
+/**
+ * GET /student/attendance
+ * Returns attendance stats for the logged-in student
+ * Optimized: Single aggregation query calculates stats in database
+ */
 export const getStudentAttendance = async (req, res) => {
   try {
     const { studentid } = req.user || {};
@@ -9,21 +12,34 @@ export const getStudentAttendance = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const student = await StudentDetails.findOne(
-      { studentid },
-      { attendance: 1, semester: 1, studentid: 1 }
-    ).lean();
+    // Single aggregation query to calculate attendance stats
+    const result = await StudentDetails.aggregate([
+      { $match: { studentid } },
+      {
+        $project: {
+          studentid: 1,
+          semester: 1,
+          totalClasses: { $size: { $ifNull: ["$attendance", []] } },
+          presentClasses: {
+            $size: {
+              $filter: {
+                input: { $ifNull: ["$attendance", []] },
+                as: "entry",
+                cond: { $eq: ["$$entry.present", true] }
+              }
+            }
+          }
+        }
+      }
+    ]);
 
-    if (!student) {
+    if (!result || result.length === 0) {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    const totalClasses = Array.isArray(student.attendance)
-      ? student.attendance.length
-      : 0;
-    const presentClasses = totalClasses > 0
-      ? student.attendance.filter((e) => e?.present === true).length
-      : 0;
+    const student = result[0];
+    const totalClasses = student.totalClasses || 0;
+    const presentClasses = student.presentClasses || 0;
     const absentClasses = Math.max(0, totalClasses - presentClasses);
     const percentage = totalClasses > 0
       ? Math.round((presentClasses / totalClasses) * 100)
@@ -47,5 +63,3 @@ export const getStudentAttendance = async (req, res) => {
 };
 
 export default getStudentAttendance;
-
-

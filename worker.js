@@ -13,8 +13,9 @@ dotenv.config();
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
 // Redis connection (Upstash first, fallback local)
+// In Docker: REDIS_HOST=redis (service name), locally: REDIS_HOST=127.0.0.1
 const connection = new IORedis({
-  host: process.env.REDIS_HOST || "redis", // service name in docker-compose
+  host: process.env.REDIS_HOST || (process.env.NODE_ENV === 'production' ? "redis" : "127.0.0.1"),
   port: parseInt(process.env.REDIS_PORT || "6379"),
 });
 
@@ -25,7 +26,12 @@ new QueueScheduler("registration-queue", { connection });
 const concurrency = parseInt(process.env.WORKER_CONCURRENCY || "8", 10);
 
 // Connect to Mongo
-const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017/facultydb";
+const MONGO_URL = process.env.MONGO_URL;
+if (!MONGO_URL) {
+  logger.error("MONGO_URL is not set in environment variables");
+  process.exit(1);
+}
+
 mongoose
   .connect(MONGO_URL, {
     useNewUrlParser: true,

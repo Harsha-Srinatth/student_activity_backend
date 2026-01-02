@@ -1,7 +1,9 @@
 import StudentDetails from '../../models/studentDetails.js';
-import FacultyDetails from '../../models/facultyDetails.js';
 
-// Submit a new leave request
+/**
+ * Submit a new leave request
+ * Optimized: Single query, validates before save
+ */
 const studentReqForLeave = async (req, res) => {
   try {
     const studentid = req.user.studentid;
@@ -23,21 +25,9 @@ const studentReqForLeave = async (req, res) => {
       });
     }
 
-    // Find student
-    const student = await StudentDetails.findOne({ studentid });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
-      });
-    }
-
-    // Calculate total days
+    // Validate dates
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-
-    // Validate dates
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -54,43 +44,40 @@ const studentReqForLeave = async (req, res) => {
       });
     }
 
-    // Create new leave request with additional student info
-    const newLeaveRequest = {
-      leaveType,
-      startDate: start,
-      endDate: end,
-      totalDays,
-      reason,
-      priority,
-      emergencyContact: emergencyContact || {},
-      alternateAssessmentRequired,
-      status: 'pending',
-      submittedAt: new Date(),
+    // Calculate total days
+    const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
-      // 🔑 attach student info
-      dept: student.dept,
-      section: student.section,
-      semester: student.semester,
-      email: student.email,
-      phone: student.mobileno,
-      facultyid: student.facultyid,
-    };
-
-    // Add to student's leave requests
-    student.leaveRequests.push(newLeaveRequest);
-    await student.save();
-
-    // Update faculty stats
-    await FacultyDetails.findOneAndUpdate(
-      { facultyid: student.facultyid },
+    // Single query: find and update in one operation
+    const student = await StudentDetails.findOneAndUpdate(
+      { studentid },
       {
-        $inc: {
-          'dashboardStats.pendingLeaveRequests': 1,
-          'dashboardStats.totalLeaveRequests': 1
-        },
-        $set: { 'dashboardStats.lastUpdated': new Date() }
-      }
+        $push: {
+          leaveRequests: {
+            leaveType,
+            startDate: start,
+            endDate: end,
+            totalDays,
+            reason,
+            priority,
+            emergencyContact: emergencyContact || {},
+            alternateAssessmentRequired,
+            status: 'pending',
+            submittedAt: new Date(),
+          }
+        }
+      },
+      { new: true, select: 'leaveRequests' }
     );
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Get the newly added leave request (last one)
+    const newLeaveRequest = student.leaveRequests[student.leaveRequests.length - 1];
 
     res.status(201).json({
       success: true,
@@ -111,49 +98,82 @@ const studentReqForLeave = async (req, res) => {
   }
 };
 
-// Get student's leave requests
+/**
+ * Get student's leave requests
+ * Optimized: Single aggregation query with filtering and pagination
+ */
 const studentLeaveRequests = async (req, res) => {
   try {
     const studentid = req.user.studentid;
     const { status, limit = 10, page = 1 } = req.query;
 
-    const student = await StudentDetails.findOne({ studentid });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
+    // Single aggregation query with filtering and pagination
+    const pipeline = [
+      { $match: { studentid } },
+      { $unwind: { path: "$leaveRequests", preserveNullAndEmptyArrays: false } },
+    ];
+
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      pipeline.push({ $match: { "leaveRequests.status": status } });
+    }
+
+    // Sort by submittedAt (newest first)
+    pipeline.push({ $sort: { "leaveRequests.submittedAt": -1 } });
+
+    // Group to get stats and all requests
+    pipeline.push({
+      $group: {
+        _id: null,
+        leaveRequests: { $push: "$leaveRequests" },
+        total: { $sum: 1 },
+        pending: {
+          $sum: { $cond: [{ $eq: ["$leaveRequests.status", "pending"] }, 1, 0] }
+        },
+        approved: {
+          $sum: { $cond: [{ $eq: ["$leaveRequests.status", "approved"] }, 1, 0] }
+        },
+        rejected: {
+          $sum: { $cond: [{ $eq: ["$leaveRequests.status", "rejected"] }, 1, 0] }
+        }
+      }
+    });
+
+    const result = await StudentDetails.aggregate(pipeline);
+
+    if (!result || result.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          leaveRequests: [],
+          stats: { total: 0, pending: 0, approved: 0, rejected: 0 },
+          pagination: { currentPage: 1, totalPages: 0, totalItems: 0, hasNext: false, hasPrev: false }
+        }
       });
     }
 
-    let leaveRequests = student.leaveRequests || [];
-
-    if (status && status !== 'all') {
-      leaveRequests = leaveRequests.filter(request => request.status === status);
-    }
-
-    leaveRequests.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-
+    const data = result[0];
+    const allRequests = data.leaveRequests || [];
+    const totalItems = allRequests.length;
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + parseInt(limit);
-    const paginatedRequests = leaveRequests.slice(startIndex, endIndex);
-
-    const stats = {
-      total: leaveRequests.length,
-      pending: leaveRequests.filter(r => r.status === 'pending').length,
-      approved: leaveRequests.filter(r => r.status === 'approved').length,
-      rejected: leaveRequests.filter(r => r.status === 'rejected').length
-    };
+    const paginatedRequests = allRequests.slice(startIndex, endIndex);
 
     res.json({
       success: true,
       data: {
         leaveRequests: paginatedRequests,
-        stats,
+        stats: {
+          total: data.total || 0,
+          pending: data.pending || 0,
+          approved: data.approved || 0,
+          rejected: data.rejected || 0
+        },
         pagination: {
           currentPage: parseInt(page),
-          totalPages: Math.ceil(leaveRequests.length / limit),
-          totalItems: leaveRequests.length,
-          hasNext: endIndex < leaveRequests.length,
+          totalPages: Math.ceil(totalItems / limit),
+          totalItems,
+          hasNext: endIndex < totalItems,
           hasPrev: startIndex > 0
         }
       }
@@ -168,22 +188,22 @@ const studentLeaveRequests = async (req, res) => {
   }
 };
 
-// Get specific leave request details
+/**
+ * Get specific leave request details
+ * Optimized: Single query with projection
+ */
 const getSpecificLeaveReqDetails = async (req, res) => {
   try {
     const studentid = req.user.studentid;
     const { requestId } = req.params;
 
-    const student = await StudentDetails.findOne({ studentid });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
-      });
-    }
+    // Single query with projection to get only the needed leave request
+    const student = await StudentDetails.findOne(
+      { studentid, "leaveRequests._id": requestId },
+      { "leaveRequests.$": 1 }
+    ).lean();
 
-    const leaveRequest = student.leaveRequests.id(requestId);
-    if (!leaveRequest) {
+    if (!student || !student.leaveRequests || student.leaveRequests.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Leave request not found'
@@ -192,7 +212,7 @@ const getSpecificLeaveReqDetails = async (req, res) => {
 
     res.json({
       success: true,
-      data: leaveRequest
+      data: student.leaveRequests[0]
     });
   } catch (error) {
     console.error('Error fetching leave request details:', error);
