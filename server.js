@@ -78,7 +78,8 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Listen on 127.0.0.1 (IPv4) for local dev, 0.0.0.0 for Docker
-// Using 127.0.0.1 instead of localhost to avoid IPv6 (::1) permission issues on Windows
-const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
+// Listen on 0.0.0.0 for cloud deployments (Render, Railway, etc.) or when PORT is set
+// Use 127.0.0.1 only for local development when PORT is not set by the platform
+// Render and other cloud platforms always set PORT, so we bind to 0.0.0.0 to be accessible
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 app.listen(PORT, HOST, () => logger.info(`Server listening on ${HOST}:${PORT}`));
