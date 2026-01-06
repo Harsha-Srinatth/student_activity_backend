@@ -1,4 +1,4 @@
-import FacultyDetails from "../../models/facultyDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 const updateFacultySettings = async (req, res) => {
   try {

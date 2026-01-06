@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import https from "https";
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
 
 // helper: fetch image buffer using https
 function fetchImageBuffer(url) {

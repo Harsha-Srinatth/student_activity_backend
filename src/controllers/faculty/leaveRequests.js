@@ -1,5 +1,5 @@
-import StudentDetails from '../../models/studentDetails.js';
-import FacultyDetails from '../../models/facultyDetails.js';
+import StudentDetails from '../../models/student/studentDetails.js';
+import FacultyDetails from '../../models/faculty/facultyDetails.js';
 
 // Get all leave requests for faculty
 export const getAllPendingLeaveReq = async (req, res) => {
@@ -114,9 +114,10 @@ export const processLeaveReq = async (req, res) => {
     leaveRequest.approvalRemarks = approvalRemarks || '';
     await student.save();
 
+    // Save leave approval matching LeaveApprovalActionSchema
+    // Schema fields: studentid, leaveRequestId, leaveType, startDate, endDate, totalDays, reason, priority, status, approvedOn, approvalRemarks
     faculty.leaveApprovalsGiven.push({
       studentid: studentid,
-      studentName: student.fullname,
       leaveRequestId: requestId,
       leaveType: leaveRequest.leaveType,
       startDate: leaveRequest.startDate,
@@ -126,7 +127,6 @@ export const processLeaveReq = async (req, res) => {
       priority: leaveRequest.priority,
       status,
       approvedOn: new Date(),
-      reviewedBy: facultyid,
       approvalRemarks: approvalRemarks || ''
     });
 

@@ -6,7 +6,6 @@ import mongoose from "mongoose";
 const LeaveApprovalActionSchema = new mongoose.Schema(
   {
     studentid: { type: String, required: true, index: true },
-    studentName: { type: String, required: true },
     leaveRequestId: { type: String, required: true },
     leaveType: {
       type: String,
@@ -37,7 +36,6 @@ const LeaveApprovalActionSchema = new mongoose.Schema(
 const ApprovalActionSchema = new mongoose.Schema(
   {
     studentid: { type: String, required: true, index: true },
-    studentName: { type: String, required: true },
     type: {
       type: String,
       enum: ["certificate", "workshop", "club", "internship", "project", "other"],
@@ -98,46 +96,6 @@ FacultySchema.index({ "approvalsGiven.approvedOn": -1 }); // For efficient recen
 FacultySchema.index({ "leaveApprovalsGiven.approvedOn": -1 }); // For efficient recent activities query
 
 /**
- * Get recent activities (derived from approvalsGiven and leaveApprovalsGiven)
- * Returns last N activities sorted by timestamp
- */
-FacultySchema.methods.getRecentActivities = function (limit = 30) {
-  const activities = [];
-  
-  // Convert approvalsGiven to activity format
-  this.approvalsGiven.forEach(approval => {
-    activities.push({
-      studentid: approval.studentid,
-      studentName: approval.studentName,
-      action: approval.status, // "approved" or "rejected"
-      type: approval.type,
-      description: approval.description,
-      timestamp: approval.approvedOn,
-      imageUrl: approval.imageUrl,
-      message: approval.message,
-    });
-  });
-  
-  // Convert leaveApprovalsGiven to activity format
-  this.leaveApprovalsGiven.forEach(leaveApproval => {
-    activities.push({
-      studentid: leaveApproval.studentid,
-      studentName: leaveApproval.studentName,
-      action: leaveApproval.status, // "approved" or "rejected"
-      type: "leave_request",
-      description: `${leaveApproval.status.charAt(0).toUpperCase() + leaveApproval.status.slice(1)} ${leaveApproval.leaveType} leave request`,
-      timestamp: leaveApproval.approvedOn,
-      approvalRemarks: leaveApproval.approvalRemarks,
-    });
-  });
-  
-  // Sort by timestamp (newest first) and return last N
-  return activities
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, limit);
-};
-
-/**
  * Record an approval action
  * Used when faculty approves/rejects student achievements
  */
@@ -161,20 +119,10 @@ FacultySchema.methods.recordLeaveApproval = function (leaveApprovalData) {
   return this.save();
 };
 
-
-/**
- * Get faculty approvals (for stats calculation)
- * Note: Dashboard stats are calculated dynamically, not stored
- */
-FacultySchema.statics.getFacultyApprovals = function (facultyId) {
-  return this.findOne({ facultyid: facultyId })
-    .select("approvalsGiven leaveApprovalsGiven")
-    .lean();
-};
-
 /**
  * Get recent activities for faculty (derived from approvals)
  * Returns last N activities sorted by timestamp
+ * Student names are fetched by studentid when needed
  */
 FacultySchema.statics.getRecentActivities = async function (facultyId, limit = 30) {
   const faculty = await this.findOne({ facultyid: facultyId })
@@ -184,13 +132,31 @@ FacultySchema.statics.getRecentActivities = async function (facultyId, limit = 3
   if (!faculty) return [];
   
   const activities = [];
+  const studentIds = new Set();
+  
+  // Collect all student IDs
+  (faculty.approvalsGiven || []).forEach(approval => {
+    if (approval.studentid) studentIds.add(approval.studentid);
+  });
+  (faculty.leaveApprovalsGiven || []).forEach(leaveApproval => {
+    if (leaveApproval.studentid) studentIds.add(leaveApproval.studentid);
+  });
+  
+  // Fetch student names by studentid
+  const StudentDetails = (await import("../student/studentDetails.js")).default;
+  const students = await StudentDetails.find({ studentid: { $in: Array.from(studentIds) } })
+    .select('studentid fullname')
+    .lean();
+  const studentMap = new Map(students.map(s => [s.studentid, s.fullname]));
   
   // Convert approvalsGiven to activity format
+  // Normalize status: "verified" -> "approved" for backward compatibility
   (faculty.approvalsGiven || []).forEach(approval => {
+    const normalizedStatus = approval.status === 'verified' ? 'approved' : (approval.status || 'approved');
     activities.push({
       studentid: approval.studentid,
-      studentName: approval.studentName,
-      action: approval.status,
+      studentName: studentMap.get(approval.studentid) || approval.studentid,
+      action: normalizedStatus,
       type: approval.type,
       description: approval.description,
       timestamp: approval.approvedOn,
@@ -203,7 +169,7 @@ FacultySchema.statics.getRecentActivities = async function (facultyId, limit = 3
   (faculty.leaveApprovalsGiven || []).forEach(leaveApproval => {
     activities.push({
       studentid: leaveApproval.studentid,
-      studentName: leaveApproval.studentName,
+      studentName: studentMap.get(leaveApproval.studentid) || leaveApproval.studentid,
       action: leaveApproval.status,
       type: "leave_request",
       description: `${leaveApproval.status.charAt(0).toUpperCase() + leaveApproval.status.slice(1)} ${leaveApproval.leaveType} leave request`,

@@ -1,18 +1,19 @@
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import { saveApprovalToFaculty, buildApprovalData, getFacultyName } from "../../utils/facultyApprovalHelper.js";
 
 // Verify a specific achievement (certification, workshop, club, project)
 const verifyAchievement = async (req, res) => {
   try {
     const { studentid, achievementType, achievementId } = req.params;
-    const { status, remarks } = req.body; // status: 'verified' or 'rejected'
+    const { status, remarks } = req.body; // status: 'approved' or 'rejected'
     const facultyId = req.user.facultyid;
 
     if (!facultyId) {
       return res.status(401).json({ error: "Faculty ID not found in token" });
     }
 
-    if (!['verified', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: "Status must be 'verified' or 'rejected'" });
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
     }
 
     // Find the student
@@ -98,6 +99,46 @@ const verifyAchievement = async (req, res) => {
       return res.status(404).json({ error: "Achievement not found or already processed" });
     }
 
+    // Record the approval in faculty's approvalsGiven array
+    try {
+      // Re-fetch student to get updated achievement data
+      const updatedStudent = await StudentDetails.findOne({ studentid, facultyid: facultyId })
+        .select('studentid fullname collegeId certifications workshops clubsJoined projects internships others')
+        .lean();
+      
+      if (updatedStudent) {
+        // Find the achievement that was just updated
+        let achievement = null;
+        const type = achievementType === 'certification' ? 'certificate' : achievementType;
+        
+        if (achievementType === 'certification') {
+          achievement = (updatedStudent.certifications || []).find(c => c._id?.toString() === achievementId);
+        } else if (achievementType === 'workshop') {
+          achievement = (updatedStudent.workshops || []).find(w => w._id?.toString() === achievementId);
+        } else if (achievementType === 'club') {
+          achievement = (updatedStudent.clubsJoined || []).find(c => c._id?.toString() === achievementId);
+        } else if (achievementType === 'project') {
+          achievement = (updatedStudent.projects || []).find(p => p._id?.toString() === achievementId);
+        }
+
+        if (achievement) {
+          const facultyName = await getFacultyName(facultyId);
+          const approvalData = await buildApprovalData(
+            updatedStudent,
+            achievement,
+            type,
+            status,
+            facultyName,
+            remarks
+          );
+          await saveApprovalToFaculty(facultyId, approvalData);
+        }
+      }
+    } catch (facultyUpdateError) {
+      // Log error but don't fail the main operation - student is already saved
+      console.error('Error updating faculty approvals:', facultyUpdateError.message);
+    }
+
     res.json({
       success: true,
       message: `Achievement ${status} successfully`,
@@ -145,18 +186,18 @@ const getStudentAchievementsForReview = async (req, res) => {
           !project.verification || project.verification.status === 'pending'
         )
       },
-      verified: {
+      approved: {
         certifications: (student.certifications || []).filter(cert => 
-          cert.verification?.status === 'verified'
+          cert.verification?.status === 'approved' || cert.verification?.status === 'verified'
         ),
         workshops: (student.workshops || []).filter(workshop => 
-          workshop.verification?.status === 'verified'
+          workshop.verification?.status === 'approved' || workshop.verification?.status === 'verified'
         ),
         clubs: (student.clubsJoined || []).filter(club => 
-          club.verification?.status === 'verified'
+          club.verification?.status === 'approved' || club.verification?.status === 'verified'
         ),
         projects: (student.projects || []).filter(project => 
-          project.verification?.status === 'verified'
+          project.verification?.status === 'approved' || project.verification?.status === 'verified'
         )
       },
       rejected: {
@@ -308,7 +349,7 @@ const backfillStudentVerifications = async (req, res) => {
       const verificationData = {
         verifiedBy: appr.reviewedBy || facultyId,
         date: appr.reviewedOn || new Date(),
-        status: appr.status === 'approved' ? 'verified' : 'rejected',
+        status: appr.status === 'approved' ? 'approved' : 'rejected',
         remarks: appr.message || ''
       };
       if (appr.type === 'certificate') {

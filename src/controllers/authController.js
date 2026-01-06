@@ -1,8 +1,8 @@
 // src/controllers/authController.js
 import Joi from "joi";
 import bcrypt from "bcryptjs";
-import FacultyDetails from "../models/facultyDetails.js";
-import StudentDetails from "../models/studentDetails.js";
+import FacultyDetails from "../models/faculty/facultyDetails.js";
+import StudentDetails from "../models/student/studentDetails.js";
 
 
 // Validation schema

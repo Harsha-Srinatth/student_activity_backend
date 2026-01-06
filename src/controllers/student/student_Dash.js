@@ -1,5 +1,5 @@
-import StudentDetails from "../../models/studentDetails.js";
-import FacultyDetails from "../../models/facultyDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 /**
  * Get student dashboard data
@@ -17,17 +17,33 @@ const student_Dashboard_Details = async (req, res) => {
     const result = await StudentDetails.aggregate([
       { $match: { studentid } },
       {
+        $lookup: {
+          from: "colleges",
+          localField: "collegeId",
+          foreignField: "collegeId",
+          as: "college"
+        }
+      },
+      {
         $project: {
           // Student basic info
           studentid: 1,
           fullname: 1,
           email: 1,
+          username: 1,
+          mobileno: 1,
           role: 1,
           semester: 1,
           dept: 1,
           programName: 1,
           facultyid: 1,
           "image.url": 1,
+          collegeName: {
+            $let: {
+              vars: { firstCollege: { $arrayElemAt: ["$college", 0] } },
+              in: { $ifNull: ["$$firstCollege.collegeName", null] }
+            }
+          },
           // Calculate counts from verification.status
           certificationsCount: {
             $size: {
@@ -162,10 +178,13 @@ const student_Dashboard_Details = async (req, res) => {
         studentid: student.studentid,
         fullname: student.fullname,
         email: student.email,
+        username: student.username,
+        mobileno: student.mobileno,
         role: student.role,
         semester: student.semester,
         dept: student.dept,
         programName: student.programName,
+        collegeName: student.collegeName,
         profileImage: student.image?.url ? { url: student.image.url } : null,
         faculty: student.facultyid ? {
           facultyid: student.facultyid,

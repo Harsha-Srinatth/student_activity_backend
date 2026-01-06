@@ -1,6 +1,6 @@
 // src/controllers/faculty/faculty_students.js
-import StudentDetails from "../../models/studentDetails.js";
-import FacultyDetails from "../../models/facultyDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 // Get all students under a specific faculty
 export const getStudentsByFaculty = async (req, res) => {
@@ -11,11 +11,11 @@ export const getStudentsByFaculty = async (req, res) => {
       return res.status(400).json({ message: "Faculty ID not found in token" });
     }
 
-    // Get students with the specified faculty ID
+    // Get students with the specified faculty ID, sorted by studentid
     const students = await StudentDetails.find({ facultyid })
       // include attendance so frontend can compute percentage
       .select('studentid fullname username email image programName semester dateofjoin institution mobileno dept attendance')
-      .sort({ dateofjoin: -1 }); // Sort by newest first
+      .sort({ studentid: 1 }); // Sort by studentid in ascending order
 
     // Get total count
     const totalCount = students.length;
@@ -36,6 +36,8 @@ export const getStudentsByFaculty = async (req, res) => {
 };
 
 // Get student count only (for dashboard stats)
+// DEPRECATED: Use /faculty/home endpoint which includes totalStudents in stats
+// Kept for backward compatibility but recommends using dashboard endpoint
 export const getStudentCountByFaculty = async (req, res) => {
   try {
     const facultyid = req.user.facultyid;
@@ -44,12 +46,14 @@ export const getStudentCountByFaculty = async (req, res) => {
       return res.status(400).json({ message: "Faculty ID not found in token" });
     }
 
-    // Get only the count
+    // Get only the count - optimized query
     const count = await StudentDetails.countDocuments({ facultyid });
 
     res.json({
       success: true,
-      totalCount: count
+      totalCount: count,
+      // Include deprecation notice
+      _deprecated: "This endpoint is deprecated. Use /faculty/home endpoint which includes totalStudents in stats."
     });
   } catch (error) {
     console.error("Error fetching student count:", error);

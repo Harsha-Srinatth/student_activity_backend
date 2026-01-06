@@ -1,5 +1,5 @@
-import StudentDetails from "../../models/studentDetails.js";
-import FacultyDetails from "../../models/facultyDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 /**
  * Get student achievements

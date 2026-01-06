@@ -1,5 +1,5 @@
-import StudentDetails from "../../models/studentDetails.js";
-import FacultyDetails from "../../models/facultyDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 const faculty_Dashboard_Details = async (req, res) => {
   try {
@@ -9,9 +9,15 @@ const faculty_Dashboard_Details = async (req, res) => {
       return res.status(401).json({ error: 'Faculty ID not found in token' });
     }
 
-    // Get faculty information
-    const faculty = await FacultyDetails.findOne({ facultyid: currentFacultyId })
-      .select('fullname facultyid institution dept designation approvalsCount lastLogin email mobile username dateofjoin image');
+    // Get faculty information and update last login in a single query
+    const faculty = await FacultyDetails.findOneAndUpdate(
+      { facultyid: currentFacultyId },
+      { lastLogin: new Date() },
+      { 
+        new: true, // Return updated document
+        select: 'fullname facultyid institution dept designation approvalsCount lastLogin email mobile username dateofjoin image'
+      }
+    );
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
@@ -19,12 +25,6 @@ const faculty_Dashboard_Details = async (req, res) => {
 
     // Calculate statistics dynamically (always fresh)
     const dashboardStats = await calculateFacultyStats(currentFacultyId);
-
-    // Update last login
-    await FacultyDetails.findOneAndUpdate(
-      { facultyid: currentFacultyId },
-      { lastLogin: new Date() }
-    );
 
     const response = {
       faculty: {
@@ -65,55 +65,80 @@ async function calculateFacultyStats(facultyId) {
         // Total students count
         totalStudents: [{ $count: "count" }],
         
-        // Pending approvals count (ONLY pending status)
+        // Pending approvals count - from verification status in all achievement types
         pendingApprovals: [
-          { $unwind: "$pendingApprovals" },
-          { $match: { "pendingApprovals.status": "pending" } },
+          {
+            $project: {
+              allItems: {
+                $concatArrays: [
+                  { $map: { input: { $ifNull: ["$certifications", []] }, as: "c", in: { type: "certificate", status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$workshops", []] }, as: "w", in: { type: "workshop", status: { $ifNull: ["$$w.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$clubsJoined", []] }, as: "c", in: { type: "club", status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$internships", []] }, as: "i", in: { type: "internship", status: { $ifNull: ["$$i.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$projects", []] }, as: "p", in: { type: "project", status: { $ifNull: ["$$p.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$others", []] }, as: "o", in: { type: "other", status: { $ifNull: ["$$o.verification.status", "pending"] } } } }
+                ]
+              }
+            }
+          },
+          { $unwind: "$allItems" },
+          { $match: { "allItems.status": { $in: ["pending", null] } } },
           { $count: "count" }
         ],
         
-        // Approved certifications count (ONLY approved status)
+        // Approved certifications count (approved status, including legacy 'verified')
         approvedCertifications: [
-          { $unwind: "$pendingApprovals" },
+          { $unwind: { path: "$certifications", preserveNullAndEmptyArrays: true } },
           { 
             $match: { 
-              "pendingApprovals.type": "certificate",
-              "pendingApprovals.status": "approved" 
+              "certifications.verification.status": { $in: ["approved", "verified"] }
             } 
           },
           { $count: "count" }
         ],
         
-        // Approved workshops count (ONLY approved status)
+        // Approved workshops count (approved status, including legacy 'verified')
         approvedWorkshops: [
-          { $unwind: "$pendingApprovals" },
+          { $unwind: { path: "$workshops", preserveNullAndEmptyArrays: true } },
           { 
             $match: { 
-              "pendingApprovals.type": "workshop",
-              "pendingApprovals.status": "approved" 
+              "workshops.verification.status": { $in: ["approved", "verified"] }
             } 
           },
           { $count: "count" }
         ],
         
-        // Approved clubs count (ONLY approved status)
+        // Approved clubs count (approved status, including legacy 'verified')
         approvedClubs: [
-          { $unwind: "$pendingApprovals" },
+          { $unwind: { path: "$clubsJoined", preserveNullAndEmptyArrays: true } },
           { 
             $match: { 
-              "pendingApprovals.type": "club",
-              "pendingApprovals.status": "approved" 
+              "clubsJoined.verification.status": { $in: ["approved", "verified"] }
             } 
           },
           { $count: "count" }
         ],
         
-        // Total approvals count (all approved + rejected)
+        // Total approvals count (all approved/verified + rejected)
         totalApprovals: [
-          { $unwind: "$pendingApprovals" },
+          {
+            $project: {
+              allItems: {
+                $concatArrays: [
+                  { $map: { input: { $ifNull: ["$certifications", []] }, as: "c", in: { status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$workshops", []] }, as: "w", in: { status: { $ifNull: ["$$w.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$clubsJoined", []] }, as: "c", in: { status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$internships", []] }, as: "i", in: { status: { $ifNull: ["$$i.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$projects", []] }, as: "p", in: { status: { $ifNull: ["$$p.verification.status", "pending"] } } } },
+                  { $map: { input: { $ifNull: ["$others", []] }, as: "o", in: { status: { $ifNull: ["$$o.verification.status", "pending"] } } } }
+                ]
+              }
+            }
+          },
+          { $unwind: "$allItems" },
           { 
             $match: { 
-              "pendingApprovals.status": { $in: ["approved", "rejected"] }
+              "allItems.status": { $in: ["approved", "verified", "rejected"] }
             } 
           },
           { $count: "count" }
@@ -121,17 +146,17 @@ async function calculateFacultyStats(facultyId) {
         
         // Leave request statistics
         pendingLeaveRequests: [
-          { $unwind: "$leaveRequests" },
+          { $unwind: { path: "$leaveRequests", preserveNullAndEmptyArrays: true } },
           { $match: { "leaveRequests.status": "pending" } },
           { $count: "count" }
         ],
         approvedLeaveRequests: [
-          { $unwind: "$leaveRequests" },
+          { $unwind: { path: "$leaveRequests", preserveNullAndEmptyArrays: true } },
           { $match: { "leaveRequests.status": "approved" } },
           { $count: "count" }
         ],
         rejectedLeaveRequests: [
-          { $unwind: "$leaveRequests" },
+          { $unwind: { path: "$leaveRequests", preserveNullAndEmptyArrays: true } },
           { $match: { "leaveRequests.status": "rejected" } },
           { $count: "count" }
         ]

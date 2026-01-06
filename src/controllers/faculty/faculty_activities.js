@@ -1,5 +1,6 @@
-import FacultyDetails from "../../models/facultyDetails.js";
-import StudentDetails from "../../models/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import CollegeSchema from "../../models/shared/collegeSchema.js";
 
 // Get faculty recent activities
 const getFacultyActivities = async (req, res) => {
@@ -22,9 +23,11 @@ const getFacultyActivities = async (req, res) => {
     const recentActivities = await FacultyDetails.getRecentActivities(currentFacultyId, 30);
 
     // Get last 10 approvals given (with null safety)
+    // Normalize status: "verified" -> "approved" for backward compatibility
     let recentApprovals = (faculty.approvalsGiven || [])
       .map(a => ({
         ...a,
+        status: a.status === 'verified' ? 'approved' : (a.status || 'approved'),
         approvedOn: a.approvedOn || a.reviewedOn || a.timestamp || a.date || new Date(),
       }))
       .sort((a, b) => new Date(b.approvedOn) - new Date(a.approvedOn))
@@ -35,8 +38,16 @@ const getFacultyActivities = async (req, res) => {
     if (missingData) {
       const studentIds = [...new Set(recentApprovals.map(a => a.studentid).filter(Boolean))];
       const students = await StudentDetails.find({ studentid: { $in: studentIds } })
-        .select('studentid institution certifications workshops projects internships')
+        .select('studentid collegeId certifications workshops projects internships clubsJoined others')
         .lean();
+      
+      // Get college names for students
+      const collegeIds = [...new Set(students.map(s => s.collegeId).filter(Boolean))];
+      const colleges = await CollegeSchema.find({ collegeId: { $in: collegeIds } })
+        .select('collegeId collegeName')
+        .lean();
+      const collegeMap = new Map(colleges.map(c => [c.collegeId, c.collegeName]));
+      
       const byId = new Map(students.map(s => [s.studentid, s]));
       recentApprovals = recentApprovals.map(a => {
         if (a.imageUrl && a.institution && a.reviewedBy) return a;
@@ -50,19 +61,32 @@ const getFacultyActivities = async (req, res) => {
             imageUrl = cert?.imageUrl;
           } else if (type === 'workshop') {
             const ws = (stu.workshops || []).find(w => w.title === description);
-            imageUrl = ws?.certificateUrl;
+            imageUrl = ws?.certificateUrl || ws?.imageUrl;
           } else if (type === 'project') {
             const pr = (stu.projects || []).find(p => p.title === description);
             imageUrl = pr?.imageUrl;
           } else if (type === 'internship') {
-            const it = (stu.internships || []).find(i => i.role === description || i.organization === description);
+            const it = (stu.internships || []).find(i => `${i.organization} - ${i.role}` === description);
             imageUrl = it?.imageUrl || it?.recommendationUrl;
+          } else if (type === 'club') {
+            const club = (stu.clubsJoined || []).find(c => (c.title === description || c.clubName === description));
+            imageUrl = club?.imageUrl;
+          } else if (type === 'other') {
+            const other = (stu.others || []).find(o => o.title === description);
+            imageUrl = other?.imageUrl;
           }
         }
+        
+        // Get institution from college map
+        let institution = a.institution;
+        if (!institution && stu.collegeId) {
+          institution = collegeMap.get(stu.collegeId) || null;
+        }
+        
         return {
           ...a,
           imageUrl: imageUrl || a.imageUrl,
-          institution: a.institution || stu.institution,
+          institution: institution || a.institution,
           reviewedBy: a.reviewedBy || undefined,
         };
       });
@@ -101,7 +125,11 @@ const getFacultyMetrics = async (req, res) => {
     }
 
     // Calculate metrics dynamically from approvals
-    const approvals = faculty.approvalsGiven || [];
+    // Normalize status: "verified" -> "approved" for backward compatibility
+    const approvals = (faculty.approvalsGiven || []).map(a => ({
+      ...a,
+      status: a.status === 'verified' ? 'approved' : (a.status || 'approved')
+    }));
     const approvedCount = approvals.filter(a => a.status === 'approved').length;
     const rejectedCount = approvals.filter(a => a.status === 'rejected').length;
     const totalApprovals = approvedCount + rejectedCount;
@@ -133,3 +161,4 @@ const getFacultyMetrics = async (req, res) => {
 };
 
 export { getFacultyActivities, getFacultyMetrics };
+

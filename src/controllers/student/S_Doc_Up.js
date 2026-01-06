@@ -1,4 +1,4 @@
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
 
 // Upload certificate/workshop/club/internship/project proof
 const studentDocUpload = async (req, res) => {
@@ -17,10 +17,12 @@ const studentDocUpload = async (req, res) => {
       repoLink,
       demoLink,
       outcome,
-      recommendationUrl,
+      projectUrl,
       date,
       dateIssued,
       certificateUrl,
+      clubName,
+      joinedOn,
     } = req.body;
 
     const studentid = req.user.studentid;
@@ -31,7 +33,7 @@ const studentDocUpload = async (req, res) => {
 
     // File uploaded → Cloudinary URL (optional for "other" type)
     const fileUrl = req.file?.path || req.file?.secure_url;
-    const requiresFile = type !== "other";
+    const requiresFile = ["certificate", "workshop", "club", "internship", "project"].includes(type);
     
     if (requiresFile && !req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -49,11 +51,6 @@ const studentDocUpload = async (req, res) => {
         imageUrl: fileUrl,
         verification: { status: "pending" },
       });
-      student.pendingApprovals.push({
-        type: "certificate",
-        description: title,
-        verification: { status: "pending" },
-      });
     } else if (type === "workshop") {
       if (!title) {
         return res.status(400).json({ error: "Title is required for workshops." });
@@ -66,26 +63,17 @@ const studentDocUpload = async (req, res) => {
         imageUrl: fileUrl,
         verification: { status: "pending" },
       });
-      student.pendingApprovals.push({
-        type: "workshop",
-        description: title,
-      });
     } else if (type === "club") {
-      if (!title) {
-        return res.status(400).json({ error: "Club name is required." });
+      if (!clubName || !title) {
+        return res.status(400).json({ error: "Club name and title are required." });
       }
       student.clubsJoined.push({
-        name: title,
-        clubId: title.toLowerCase().replace(/\s+/g, "-"),
+        clubName,
+        title,
         role: role || "member",
-        joinedOn: date || new Date(),
+        joinedOn: joinedOn ? new Date(joinedOn) : new Date(),
         imageUrl: fileUrl,
         verification: { status: "pending" },
-      });
-      student.pendingApprovals.push({
-        type: "club",
-        description: title,
-        imageUrl: fileUrl,
       });
     } else if (type === "internship") {
       if (!organization || !role || !startDate || !endDate) {
@@ -98,14 +86,9 @@ const studentDocUpload = async (req, res) => {
         startDate,
         endDate,
         description,
-        recommendationUrl,
+        projectUrl,
         imageUrl: fileUrl,
         verification: { status: "pending" },
-      });
-      student.pendingApprovals.push({
-        type: "internship",
-        description: `${organization} - ${role}`,
-        imageUrl: fileUrl,
       });
     } else if (type === "project") {
       if (!title) {
@@ -114,27 +97,28 @@ const studentDocUpload = async (req, res) => {
       student.projects = student.projects || [];
       student.projects.push({
         title,
-        description,
-        technologies: technologies ? technologies.split(",") : [],
         outcome,
+        technologies: technologies ? technologies.split(",").map(t => t.trim()).filter(t => t) : [],
         repoLink,
         demoLink,
+        description,
         imageUrl: fileUrl,
         verification: { status: "pending" },
       });
-      student.pendingApprovals.push({
-        type: "project",
-        description: title,
+    } else if (type === "other") {
+      if (!title) {
+        return res.status(400).json({ error: "Title is required for other document types." });
+      }
+      student.others = student.others || [];
+      student.others.push({
+        title,
+        outcome,
+        description,
         imageUrl: fileUrl,
+        verification: { status: "pending" },
       });
     } else {
-      if (!description) {
-        return res.status(400).json({ error: "Description is required for other document types." });
-      }
-      student.pendingApprovals.push({
-        type: "other",
-        description,
-      });
+      return res.status(400).json({ error: "Invalid document type." });
     }
 
     await student.save();

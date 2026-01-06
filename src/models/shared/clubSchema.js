@@ -6,9 +6,9 @@ const ClubDetailSchema = new mongoose.Schema({
     clubName: { type: String, required: true },
     description: { type: String, required: true },
     imageUrl: { type: String, required: true },
-    members: { type: [String], default: [] },
+    members: [{studentid: { type: String, required: true } }],
     amounttojoin: { type: Number, required: true },
 }, { _id: false, timestamps: true });
 
-const ClubDetail = mongoose.model("ClubDetail", ClubDetailSchema);
+const ClubDetail = mongoose.model("ClubDetails", ClubDetailSchema);
 export default ClubDetail;

@@ -14,7 +14,7 @@ import mongoose from "mongoose";
 import pino from "pino";
 import expressPino from "pino-http";
 
-import authRoutes from "./src/routes/authRoutes.js";
+import routes from "./src/routes/index.js";
 // import { createRegistrationQueue } from "./src/queue/registrationQueue.js"; // Disabled
 
 dotenv.config();
@@ -63,7 +63,7 @@ mongoose
     process.exit(1);
   });
 
-app.use("/", authRoutes);
+app.use("/", routes);
 
 // Global JSON error handler (captures Multer/Cloudinary and other errors)
 // Must be after all routes

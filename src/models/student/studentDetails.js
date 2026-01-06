@@ -64,16 +64,12 @@ const LeaveRequestSchema = new mongoose.Schema(
 );
 
 // Enrollments (track enrollment requests)
-const EnrollmentSchema = new mongoose.Schema(
+const ClubEnrollmentSchema = new mongoose.Schema(
   {
-    enrollmentId: { type: String, required: true },
-    enrollmentName: { type: String, required: true },
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
-    createdAt: { type: Date, default: Date.now },
+    clubId: { type: String, required: true },
+    role: { type: String, enum: ["member", "president", "vice-president", "secretary", "co-ordinator", "head", "other"], default: "member" },
+    joinedOn: { type: Date, default: Date.now },
+    amountPaid: { type: Number, default: 0 },
   },
   { _id: true }
 );
@@ -104,11 +100,10 @@ const WorkshopSchema = new mongoose.Schema(
 // Sub-schema for clubs
 const ClubSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    clubId: { type: String },
+    clubName: { type: String, required: true },
+    title: { type: String, required: true },
     role: { type: String, default: "member" },
     joinedOn: { type: Date, default: Date.now },
-    amountPaid: { type: Number, default: 0 },
     imageUrl: { type: String },
     verification: VerificationSchema,
   }
@@ -121,26 +116,37 @@ const InternshipSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     description: { type: String },
-    recommendationUrl: { type: String },
     projectUrl: { type: String },
     imageUrl: { type: String },
     verification: VerificationSchema,
   },
-  { _id: false }
+  { timestamps: true }
 );
 
 // Projects
 const ProjectSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
-    description: { type: String },
-    technologies: [String],
     outcome: { type: String },
+    technologies: [String],
     repoLink: { type: String },
     demoLink: { type: String },
+    description: { type: String },
     imageUrl: { type: String },
     verification: VerificationSchema,
   }
+);
+
+// Other
+const OtherSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    outcome: { type: String },
+    description: { type: String },
+    imageUrl: { type: String },
+    verification: VerificationSchema,
+  },
+  { timestamps: true }
 );
 
 // Attendance and Academic Records
@@ -212,11 +218,13 @@ const StudentDetailSchema = new mongoose.Schema(
     // Clubs
     clubsJoined: { type: [ClubSchema], default: [] },
     // Enrollments 
-    enrollments: { type: [EnrollmentSchema], default: [] },
+    clubEnrollments: { type: [ClubEnrollmentSchema], default: [] },
     // Internships
     internships: { type: [InternshipSchema], default: [] },
     // Projects
     projects: { type: [ProjectSchema], default: [] },
+    // Other
+    others: { type: [OtherSchema], default: [] },
     // Leave Requests Array
     leaveRequests: { type: [LeaveRequestSchema], default: [] },
     // Attendance: Individual daily-period entries
@@ -231,7 +239,7 @@ const StudentDetailSchema = new mongoose.Schema(
 
 // Compound index
 StudentDetailSchema.index({
-  institution: 1,
+  collegeId: 1,
   dept: 1,
   studentid: 1,
   mobileno: 1,

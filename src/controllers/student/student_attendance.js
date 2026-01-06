@@ -1,4 +1,4 @@
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
 
 /**
  * GET /student/attendance

@@ -1,4 +1,5 @@
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import ClubDetail from "../../models/shared/clubSchema.js";
 
 /**
  * GET all clubs joined for logged in student
@@ -14,7 +15,7 @@ const getClubsJoined = async (req, res) => {
     // Single query with projection - only fetch clubsJoined field
     const student = await StudentDetails.findOne(
       { studentid },
-      { clubsJoined: 1 }
+      { clubEnrollments: 1 }
     ).lean();
 
     if (!student) {
@@ -23,7 +24,7 @@ const getClubsJoined = async (req, res) => {
 
     return res.json({ 
       ok: true, 
-      clubsJoined: student.clubsJoined || [] 
+      clubsJoined: student.clubEnrollments || [] 
     });
   } catch (err) {
     console.error("getClubsJoined error:", err);
@@ -50,7 +51,7 @@ const enrollInClub = async (req, res) => {
     // Check if already enrolled using aggregation
     const existing = await StudentDetails.findOne({
       studentid,
-      "clubsJoined.clubId": clubId
+      "clubEnrollments.clubId": clubId
     }).lean();
 
     if (existing) {
@@ -60,12 +61,12 @@ const enrollInClub = async (req, res) => {
       });
     }
 
-    // Single operation: find and update
+    // Single operation: find and update student
     const student = await StudentDetails.findOneAndUpdate(
       { studentid },
       {
         $push: {
-          clubsJoined: {
+          clubEnrollments: {
             clubId,
             role,
             joinedOn: new Date(),
@@ -73,7 +74,7 @@ const enrollInClub = async (req, res) => {
           }
         }
       },
-      { new: true, select: "clubsJoined" }
+      { new: true, select: "clubEnrollments" }
     );
 
     if (!student) {
@@ -83,8 +84,18 @@ const enrollInClub = async (req, res) => {
       });
     }
 
+    // Also add student to club's members array if not already present
+    await ClubDetail.findOneAndUpdate(
+      { clubId },
+      {
+        $addToSet: { // $addToSet prevents duplicates
+          members: { studentid }
+        }
+      }
+    );
+
     // Get the newly added club (last one)
-    const newClub = student.clubsJoined[student.clubsJoined.length - 1];
+    const newClub = student.clubEnrollments[student.clubEnrollments.length - 1];
 
     res.json({ 
       ok: true, 

@@ -1,4 +1,5 @@
-import StudentDetails from "../../models/studentDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import { saveApprovalToFaculty, buildApprovalData, getFacultyName } from "../../utils/facultyApprovalHelper.js";
 
 // Get all students with pending approvals for the current faculty
 const getPendingApprovals = async (req, res) => {
@@ -10,75 +11,123 @@ const getPendingApprovals = async (req, res) => {
       return res.status(401).json({ error: "Faculty ID not found in token" });
     }
 
-    const students = await StudentDetails.aggregate([
-      {
-        $match: {
-          facultyid: currentFacultyId,
-          "pendingApprovals.status": "pending",
-        },
-      },
-      {
-        $project: {
-          fullname: 1,
-          studentid: 1,
-          email: 1,
-          institution: 1,
-          dept: 1,
-          programName: 1,
-          certifications: 1,
-          workshops: 1,
-          clubsJoined: 1,
-          internships: 1,
-          projects: 1,
-          facultyid: 1,
-          pendingApprovals: {
-            $filter: {
-              input: "$pendingApprovals",
-              as: "approval",
-              cond: { $eq: ["$$approval.status", "pending"] },
-            },
-          },
-        },
-      },
-    ]);
+    // Fetch all students for this faculty
+    const students = await StudentDetails.find({
+      facultyid: currentFacultyId,
+    }).select('fullname studentid email mobileno collegeId dept programName certifications workshops clubsJoined internships projects others facultyid').lean();
 
-    // Enrich pending approvals with imageUrl/certificateUrl for quick access (especially clubs)
-    const enriched = (students || []).map((s) => {
-      const approvals = (s.pendingApprovals || []).map((a) => {
-        let imageUrl;
-        switch (a.type) {
-          case 'certificate': {
-            const cert = (s.certifications || []).find(c => c.title === a.description);
-            imageUrl = cert?.imageUrl;
-            break;
-          }
-          case 'workshop': {
-            const ws = (s.workshops || []).find(w => w.title === a.description);
-            imageUrl = ws?.certificateUrl;
-            break;
-          }
-          case 'club': {
-            const club = (s.clubsJoined || []).find(c => c.name === a.description);
-            imageUrl = club?.imageUrl;
-            break;
-          }
-          case 'project': {
-            const proj = (s.projects || []).find(p => p.title === a.description);
-            imageUrl = proj?.imageUrl;
-            break;
-          }
-          case 'internship': {
-            const intern = (s.internships || []).find(i => `${i.organization} - ${i.role}` === a.description);
-            imageUrl = intern?.imageUrl;
-            break;
-          }
-          default:
-            imageUrl = undefined;
+    // Build pendingApprovals from verification status in each achievement type
+    const buildPendingApprovals = (student) => {
+      const pendingApprovals = [];
+
+      // Helper to normalize status: "verified" -> "approved", keep others as-is
+      // If verification object doesn't exist or status is missing/null, treat as pending
+      const normalizeStatus = (verification) => {
+        if (!verification || !verification.status) return 'pending';
+        const status = verification.status;
+        if (status === 'pending') return 'pending';
+        if (status === 'verified') return 'approved';
+        if (status === 'approved' || status === 'rejected') return status;
+        return 'pending'; // default to pending for unknown statuses
+      };
+
+      // Certifications
+      (student.certifications || []).forEach((cert) => {
+        const status = normalizeStatus(cert.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'certificate',
+            description: cert.title,
+            status: 'pending',
+            imageUrl: cert.imageUrl,
+            requestedOn: cert.dateIssued || new Date(),
+          });
         }
-        return { ...a, imageUrl };
       });
-      return { ...s, pendingApprovals: approvals };
-    });
+
+      // Workshops
+      (student.workshops || []).forEach((workshop) => {
+        const status = normalizeStatus(workshop.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'workshop',
+            description: workshop.title,
+            status: 'pending',
+            imageUrl: workshop.certificateUrl || workshop.imageUrl,
+            requestedOn: workshop.date || new Date(),
+          });
+        }
+      });
+
+      // Clubs
+      (student.clubsJoined || []).forEach((club) => {
+        const status = normalizeStatus(club.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'club',
+            description: club.title || club.clubName,
+            status: 'pending',
+            imageUrl: club.imageUrl,
+            requestedOn: club.joinedOn || new Date(),
+          });
+        }
+      });
+
+      // Internships
+      (student.internships || []).forEach((internship) => {
+        const status = normalizeStatus(internship.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'internship',
+            description: `${internship.organization} - ${internship.role}`,
+            status: 'pending',
+            imageUrl: internship.imageUrl,
+            requestedOn: internship.startDate || new Date(),
+          });
+        }
+      });
+
+      // Projects
+      (student.projects || []).forEach((project) => {
+        const status = normalizeStatus(project.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'project',
+            description: project.title,
+            status: 'pending',
+            imageUrl: project.imageUrl,
+            requestedOn: new Date(),
+          });
+        }
+      });
+
+      // Others
+      (student.others || []).forEach((other) => {
+        const status = normalizeStatus(other.verification);
+        if (status === 'pending') {
+          pendingApprovals.push({
+            type: 'other',
+            description: other.title,
+            status: 'pending',
+            imageUrl: other.imageUrl,
+            requestedOn: other.createdAt || new Date(),
+          });
+        }
+      });
+
+      return pendingApprovals;
+    };
+
+    // Filter students who have pending approvals and enrich with pendingApprovals array
+    const enriched = students
+      .map((student) => {
+        const pendingApprovals = buildPendingApprovals(student);
+        return {
+          ...student,
+          pendingApprovals,
+        };
+      })
+      .filter((student) => student.pendingApprovals.length > 0);
 
     return res.json(enriched);
   } catch (error) {
@@ -114,104 +163,90 @@ const handleApproval = async (req, res) => {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
-    // Find the pending approval by type and description
-    const approval = student.pendingApprovals.find(
-      approval => approval.status === 'pending' &&
-        approval.type === type &&
-        approval.description === description
-    );
+    // Get faculty name
+    const facultyName = await getFacultyName(currentFacultyId);
 
-    if (!approval) {
-      return res.status(404).json({ message: 'Pending approval not found' });
-    }
-
-    // Load faculty name for display to students
-    let facultyName = currentFacultyId;
-    try {
-      const FacultyDetailsForName = (await import("../../models/facultyDetails.js")).default;
-      const fac = await FacultyDetailsForName.findOne({ facultyid: currentFacultyId }).select('fullname').lean();
-      if (fac?.fullname) facultyName = fac.fullname;
-    } catch (_) {}
-
-    // Update the approval status
-    approval.status = action === 'approve' ? 'approved' : 'rejected';
-    approval.reviewedOn = new Date();
-    approval.reviewedBy = facultyName; // store faculty name for UI
-    approval.message = message || '';
-
-    // Reflect verification status on the actual achievement entry
+    // Find and update the achievement by type and description
+    const status = action === 'approve' ? 'approved' : 'rejected';
     const verificationData = {
       verifiedBy: facultyName,
       date: new Date(),
-      status: action === 'approve' ? 'verified' : 'rejected',
+      status: status,
       remarks: message || ''
     };
-    if (type === 'certificate') {
-      const idx = student.certifications.findIndex(c => c.title === description);
-      if (idx !== -1) student.certifications[idx].verification = verificationData;
-    } else if (type === 'workshop') {
-      const idx = student.workshops.findIndex(w => w.title === description);
-      if (idx !== -1) student.workshops[idx].verification = verificationData;
-    } else if (type === 'club') {
-      const idx = student.clubsJoined.findIndex(c => c.name === description);
-      if (idx !== -1) student.clubsJoined[idx].verification = verificationData;
-    } else if (type === 'internship') {
-      const idx = student.internships.findIndex(i => `${i.organization} - ${i.role}` === description);
-      if (idx !== -1) student.internships[idx].verification = verificationData;
-    } else if (type === 'project') {
-      const idx = student.projects.findIndex(p => p.title === description);
-      if (idx !== -1) student.projects[idx].verification = verificationData;
+
+    // Helper to find and update achievement
+    const findAndUpdateAchievement = () => {
+      if (type === 'certificate') {
+        const idx = student.certifications.findIndex(c => c.title === description);
+        if (idx !== -1 && (!student.certifications[idx].verification || student.certifications[idx].verification.status === 'pending')) {
+          student.certifications[idx].verification = verificationData;
+          return student.certifications[idx];
+        }
+      } else if (type === 'workshop') {
+        const idx = student.workshops.findIndex(w => w.title === description);
+        if (idx !== -1 && (!student.workshops[idx].verification || student.workshops[idx].verification.status === 'pending')) {
+          student.workshops[idx].verification = verificationData;
+          return student.workshops[idx];
+        }
+      } else if (type === 'club') {
+        const idx = student.clubsJoined.findIndex(c => (c.title === description || c.clubName === description));
+        if (idx !== -1 && (!student.clubsJoined[idx].verification || student.clubsJoined[idx].verification.status === 'pending')) {
+          student.clubsJoined[idx].verification = verificationData;
+          return student.clubsJoined[idx];
+        }
+      } else if (type === 'internship') {
+        const idx = student.internships.findIndex(i => `${i.organization} - ${i.role}` === description);
+        if (idx !== -1 && (!student.internships[idx].verification || student.internships[idx].verification.status === 'pending')) {
+          student.internships[idx].verification = verificationData;
+          return student.internships[idx];
+        }
+      } else if (type === 'project') {
+        const idx = student.projects.findIndex(p => p.title === description);
+        if (idx !== -1 && (!student.projects[idx].verification || student.projects[idx].verification.status === 'pending')) {
+          student.projects[idx].verification = verificationData;
+          return student.projects[idx];
+        }
+      } else if (type === 'other') {
+        const idx = student.others.findIndex(o => o.title === description);
+        if (idx !== -1 && (!student.others[idx].verification || student.others[idx].verification.status === 'pending')) {
+          student.others[idx].verification = verificationData;
+          return student.others[idx];
+        }
+      }
+      return null;
+    };
+
+    const achievement = findAndUpdateAchievement();
+    if (!achievement) {
+      return res.status(404).json({ message: 'Pending approval not found or already processed' });
     }
 
     await student.save();
 
-    // Update faculty statistics and track activity
+    // Save approval to faculty using shared helper
     try {
-      const FacultyDetails = (await import("../../models/facultyDetails.js")).default;
-      // Record the approval in faculty's approvalsGiven array
-      let imageUrl;
-      if (type === 'certificate') {
-        const cert = (student.certifications || []).find(c => c.title === description);
-        imageUrl = cert?.imageUrl;
-      } else if (type === 'workshop') {
-        const ws = (student.workshops || []).find(w => w.title === description);
-        imageUrl = ws?.certificateUrl;
-      } else if (type === 'project') {
-        const pr = (student.projects || []).find(p => p.title === description);
-        imageUrl = pr?.imageUrl;
-      } else if (type === 'internship') {
-        const it = (student.internships || []).find(i => i.role === description || i.organization === description);
-        imageUrl = it?.imageUrl || it?.recommendationUrl;
-      }
-
-      const approvalData = {
-        studentid: student.studentid,
-        studentName: student.fullname,
-        institution: student.institution,
-        type: type,
-        description: description,
-        status: action === 'approve' ? 'approved' : 'rejected',
-        approvedOn: new Date(),
-        reviewedBy: facultyName,
-        imageUrl: imageUrl,
-        message: message || ''
-      };
-      await FacultyDetails.findOneAndUpdate(
-        { facultyid: currentFacultyId },
-        { 
-          $push: { approvalsGiven: approvalData },
-          $inc: { approvalsCount: 1 }
-        }
-      );
-      // Note: Recent activities are derived from approvalsGiven, no need to store separately
+      const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message);
+      await saveApprovalToFaculty(currentFacultyId, approvalData);
     } catch (facultyUpdateError) {
-      console.error('Error updating faculty statistics:', facultyUpdateError);
-      // Don't fail the main operation if faculty stats update fails
+      // Log error but don't fail the main operation - student is already saved
+      console.error('Error updating faculty approvals:', facultyUpdateError.message);
     }
+
+    // Build approval response object for consistency
+    const approvalResponse = {
+      type: type,
+      description: description,
+      status: action === 'approve' ? 'approved' : 'rejected',
+      reviewedOn: new Date(),
+      reviewedBy: facultyName,
+      message: message || '',
+      imageUrl: achievement?.imageUrl || achievement?.certificateUrl,
+    };
 
     res.json({ 
       message: `Submission ${action}d successfully`,
-      approval: approval
+      approval: approvalResponse
     });
 
   } catch (error) {
@@ -233,13 +268,112 @@ const getStudentDetailsFrom = async (req, res) => {
     const student = await StudentDetails.findOne({ 
       studentid, 
       facultyid: currentFacultyId // Ensure student belongs to current faculty
-    }).select('fullname studentid email mobileno institution dept programName pendingApprovals certifications workshops clubsJoined internships projects facultyid');
+    }).select('fullname studentid email mobileno collegeId dept programName certifications workshops clubsJoined internships projects others facultyid').lean();
 
     if (!student) {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
-    res.json(student);
+    // Build pendingApprovals from verification status (same logic as getPendingApprovals)
+    const normalizeStatus = (verification) => {
+      if (!verification || !verification.status) return 'pending';
+      const status = verification.status;
+      if (status === 'pending') return 'pending';
+      if (status === 'verified') return 'approved';
+      if (status === 'approved' || status === 'rejected') return status;
+      return 'pending';
+    };
+
+    const pendingApprovals = [];
+
+    // Certifications
+    (student.certifications || []).forEach((cert) => {
+      const status = normalizeStatus(cert.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'certificate',
+          description: cert.title,
+          status: 'pending',
+          imageUrl: cert.imageUrl,
+          requestedOn: cert.dateIssued || new Date(),
+        });
+      }
+    });
+
+    // Workshops
+    (student.workshops || []).forEach((workshop) => {
+      const status = normalizeStatus(workshop.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'workshop',
+          description: workshop.title,
+          status: 'pending',
+          imageUrl: workshop.certificateUrl || workshop.imageUrl,
+          requestedOn: workshop.date || new Date(),
+        });
+      }
+    });
+
+    // Clubs
+    (student.clubsJoined || []).forEach((club) => {
+      const status = normalizeStatus(club.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'club',
+          description: club.title || club.clubName,
+          status: 'pending',
+          imageUrl: club.imageUrl,
+          requestedOn: club.joinedOn || new Date(),
+        });
+      }
+    });
+
+    // Internships
+    (student.internships || []).forEach((internship) => {
+      const status = normalizeStatus(internship.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'internship',
+          description: `${internship.organization} - ${internship.role}`,
+          status: 'pending',
+          imageUrl: internship.imageUrl,
+          requestedOn: internship.startDate || new Date(),
+        });
+      }
+    });
+
+    // Projects
+    (student.projects || []).forEach((project) => {
+      const status = normalizeStatus(project.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'project',
+          description: project.title,
+          status: 'pending',
+          imageUrl: project.imageUrl,
+          requestedOn: new Date(),
+        });
+      }
+    });
+
+    // Others
+    (student.others || []).forEach((other) => {
+      const status = normalizeStatus(other.verification);
+      if (status === 'pending') {
+        pendingApprovals.push({
+          type: 'other',
+          description: other.title,
+          status: 'pending',
+          imageUrl: other.imageUrl,
+          requestedOn: other.createdAt || new Date(),
+        });
+      }
+    });
+
+    res.json({
+      ...student,
+      pendingApprovals,
+    });
   } catch (error) {
     console.error('Error fetching student details:', error);
     res.status(500).json({ error: error.message });
@@ -250,7 +384,7 @@ const getStudentDetailsFrom = async (req, res) => {
 const bulkApproval = async (req, res) => {
   try {
     const { studentid } = req.params;
-    const { approvals, action, message } = req.body;
+    const { approvals, action, message } = req.body; // approvals: [{type, description}, ...]
     const currentFacultyId = req.user.facultyid;
 
     if (!currentFacultyId) {
@@ -262,7 +396,7 @@ const bulkApproval = async (req, res) => {
     }
 
     if (!Array.isArray(approvals) || approvals.length === 0) {
-      return res.status(400).json({ message: 'Approvals array is required' });
+      return res.status(400).json({ message: 'Approvals array is required. Each approval should have {type, description}' });
     }
 
     const student = await StudentDetails.findOne({ 
@@ -273,25 +407,92 @@ const bulkApproval = async (req, res) => {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
-    // Update multiple approvals
-    approvals.forEach(approvalId => {
-      const approvalIndex = student.pendingApprovals.findIndex(
-        approval => approval._id?.toString() === approvalId
-      );
+    const facultyName = await getFacultyName(currentFacultyId);
+    const status = action === 'approve' ? 'approved' : 'rejected';
+    const verificationData = {
+      verifiedBy: facultyName,
+      date: new Date(),
+      status: status,
+      remarks: message || ''
+    };
 
-      if (approvalIndex !== -1) {
-        student.pendingApprovals[approvalIndex].status = action === 'approve' ? 'approved' : 'rejected';
-        student.pendingApprovals[approvalIndex].reviewedOn = new Date();
-        student.pendingApprovals[approvalIndex].reviewedBy = currentFacultyId; // or use faculty name if available
-        student.pendingApprovals[approvalIndex].message = message || '';
+    let updatedCount = 0;
+    const approvalRecords = [];
+
+    // Helper to find and update achievement
+    const findAndUpdateAchievement = (type, description) => {
+      if (type === 'certificate') {
+        const idx = student.certifications.findIndex(c => c.title === description);
+        if (idx !== -1 && (!student.certifications[idx].verification || student.certifications[idx].verification.status === 'pending')) {
+          student.certifications[idx].verification = verificationData;
+          return student.certifications[idx];
+        }
+      } else if (type === 'workshop') {
+        const idx = student.workshops.findIndex(w => w.title === description);
+        if (idx !== -1 && (!student.workshops[idx].verification || student.workshops[idx].verification.status === 'pending')) {
+          student.workshops[idx].verification = verificationData;
+          return student.workshops[idx];
+        }
+      } else if (type === 'club') {
+        const idx = student.clubsJoined.findIndex(c => (c.title === description || c.clubName === description));
+        if (idx !== -1 && (!student.clubsJoined[idx].verification || student.clubsJoined[idx].verification.status === 'pending')) {
+          student.clubsJoined[idx].verification = verificationData;
+          return student.clubsJoined[idx];
+        }
+      } else if (type === 'internship') {
+        const idx = student.internships.findIndex(i => `${i.organization} - ${i.role}` === description);
+        if (idx !== -1 && (!student.internships[idx].verification || student.internships[idx].verification.status === 'pending')) {
+          student.internships[idx].verification = verificationData;
+          return student.internships[idx];
+        }
+      } else if (type === 'project') {
+        const idx = student.projects.findIndex(p => p.title === description);
+        if (idx !== -1 && (!student.projects[idx].verification || student.projects[idx].verification.status === 'pending')) {
+          student.projects[idx].verification = verificationData;
+          return student.projects[idx];
+        }
+      } else if (type === 'other') {
+        const idx = student.others.findIndex(o => o.title === description);
+        if (idx !== -1 && (!student.others[idx].verification || student.others[idx].verification.status === 'pending')) {
+          student.others[idx].verification = verificationData;
+          return student.others[idx];
+        }
       }
-    });
+      return null;
+    };
+
+    // Update multiple approvals
+    for (const { type, description } of approvals) {
+      if (!type || !description) continue;
+
+      const achievement = findAndUpdateAchievement(type, description);
+      if (achievement) {
+        updatedCount++;
+        try {
+          const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message);
+          approvalRecords.push(approvalData);
+        } catch (error) {
+          console.warn(`⚠️ Could not build approval data for ${type}: ${description}`, error.message);
+        }
+      }
+    }
 
     await student.save();
 
+    // Save all approvals to faculty using helper
+    if (approvalRecords.length > 0) {
+      for (const approvalData of approvalRecords) {
+        try {
+          await saveApprovalToFaculty(currentFacultyId, approvalData);
+        } catch (error) {
+          console.error(`Failed to save approval for ${approvalData.type}: ${approvalData.description}`, error.message);
+        }
+      }
+    }
+
     res.json({ 
-      message: `${approvals.length} submissions ${action}d successfully`,
-      updatedCount: approvals.length
+      message: `${updatedCount} submission(s) ${action}d successfully`,
+      updatedCount: updatedCount
     });
 
   } catch (error) {
