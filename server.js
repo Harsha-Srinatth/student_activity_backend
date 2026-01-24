@@ -29,10 +29,49 @@ app.use(helmet());
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// CORS configuration - allow multiple origins for Vercel deployments
+const allowedOrigins = [
+  process.env.FRONTEND_ORIGIN, // Production URL
+  "http://localhost:5173",     // Local development
+  "http://localhost:3000",     // Alternative local port
+];
+
+// Add Vercel preview URLs pattern if FRONTEND_ORIGIN is set
+if (process.env.FRONTEND_ORIGIN) {
+  // Extract base domain from FRONTEND_ORIGIN (e.g., student-frontend-phi.vercel.app)
+  const baseDomain = process.env.FRONTEND_ORIGIN.replace(/^https?:\/\//, '');
+  // Allow all Vercel preview deployments (*.vercel.app)
+  allowedOrigins.push(new RegExp(`^https://.*\\.vercel\\.app$`));
+}
+
+// Filter out undefined values
+const validOrigins = allowedOrigins.filter(origin => origin);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin matches any allowed origin
+      const isAllowed = validOrigins.some(allowedOrigin => {
+        if (typeof allowedOrigin === 'string') {
+          return origin === allowedOrigin;
+        } else if (allowedOrigin instanceof RegExp) {
+          return allowedOrigin.test(origin);
+        }
+        return false;
+      });
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
@@ -89,9 +128,38 @@ const server = app.listen(PORT, HOST, () => logger.info(`Server listening on ${H
 // -------------------------------
 // Socket.IO Setup
 // -------------------------------
+// Socket.IO CORS - use same logic as Express CORS
+const socketOrigins = [
+  process.env.FRONTEND_ORIGIN,
+  "http://localhost:5173",
+  "http://localhost:3000",
+].filter(Boolean);
+
+// Add Vercel preview pattern for Socket.IO
+if (process.env.FRONTEND_ORIGIN) {
+  socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
+}
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      
+      const isAllowed = socketOrigins.some(allowedOrigin => {
+        if (typeof allowedOrigin === 'string') {
+          return origin === allowedOrigin;
+        } else if (allowedOrigin instanceof RegExp) {
+          return allowedOrigin.test(origin);
+        }
+        return false;
+      });
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST"],
   },
