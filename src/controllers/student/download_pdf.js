@@ -23,7 +23,12 @@ function addSectionTitle(doc, title) {
 
 export const generateStudentPortfolioPDF = async (req, res) => {
   try {
-    const { studentid } = req.params;
+    // Get studentid from authenticated user (security: students can only download their own portfolio)
+    const { studentid } = req.user || {};
+    if (!studentid) {
+      return res.status(401).json({ message: "Unauthorized - Student ID not found" });
+    }
+    
     const student = await StudentDetails.findOne({ studentid });
 
     if (!student) {

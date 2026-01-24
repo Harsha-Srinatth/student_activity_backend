@@ -1,4 +1,5 @@
 import StudentDetails from "../../models/student/studentDetails.js";
+import { emitAttendanceUpdate, emitStudentDashboardDataUpdate } from "../../utils/socketEmitter.js";
 
 export const submitAttendance = async (req, res) => {
   try {
@@ -52,7 +53,29 @@ export const submitAttendance = async (req, res) => {
     });
 
     const results = await Promise.all(tasks);
-    const updated = results.filter(Boolean).length;
+    const updatedStudentIds = results.filter(Boolean);
+    const updated = updatedStudentIds.length;
+    
+    // Emit real-time attendance update to affected students
+    if (updatedStudentIds.length > 0) {
+      const attendanceData = {
+        date: attendanceDate.toISOString(), // Convert to ISO string for proper serialization
+        period: Number(period),
+        updated: true,
+        timestamp: new Date().toISOString(),
+      };
+      emitAttendanceUpdate(updatedStudentIds, attendanceData);
+      
+      // Also emit dashboard updates (counts and approvals) so components refresh
+      // This ensures RecentActivities, RejectedApprovals, etc. show updated data
+      try {
+        await emitStudentDashboardDataUpdate(updatedStudentIds);
+      } catch (error) {
+        // Don't fail the request if dashboard update fails
+        console.error('Error emitting dashboard updates:', error.message);
+      }
+    }
+    
     return res.json({ success: true, updated });
   } catch (err) {
     req.log?.error({ err }, "submitAttendance failed");

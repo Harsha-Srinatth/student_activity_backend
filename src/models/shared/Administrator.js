@@ -8,13 +8,26 @@ const AdminSchema = new mongoose.Schema(
       unique: true,
       index: true
     },
-
-    name: {
+    collegeId: {
       type: String,
       required: true,
-      trim: true
+      index: true
     },
-
+    mobile: {
+      type: String,
+      required: true,
+      index: true
+    },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true
+    },
+    fullname: {
+      type: String,
+      required: true
+    },
     email: {
       type: String,
       required: true,
@@ -29,12 +42,6 @@ const AdminSchema = new mongoose.Schema(
       select: false // prevents password from being returned in queries
     },
 
-    role: {
-      type: String,
-      enum: ["SUPER_ADMIN", "ADMIN"],
-      default: "ADMIN"
-    },
-
     isActive: {
       type: Boolean,
       default: true
@@ -44,7 +51,7 @@ const AdminSchema = new mongoose.Schema(
       type: Date
     }
   },
-  { _id: false, timestamps: true }
+  { timestamps: true }
 );
 
 const Admin = mongoose.model("Admin", AdminSchema);

@@ -79,6 +79,11 @@ export const getAllPendingLeaveReq = async (req, res) => {
   }
 };
 
+import { 
+  emitUserNotification,
+  emitFacultyStatsUpdate 
+} from "../../utils/socketEmitter.js";
+
 // Approve/Reject leave request
 export const processLeaveReq = async (req, res) => {
   try {
@@ -140,6 +145,26 @@ export const processLeaveReq = async (req, res) => {
         }
       }
     );
+
+    // Emit real-time updates via Socket.IO
+    try {
+      // Emit notification to student
+      emitUserNotification(studentid, {
+        type: 'leave_request',
+        title: `Leave Request ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+        message: `Your leave request has been ${status} by ${faculty.fullname}`,
+        data: {
+          leaveRequestId: requestId,
+          status,
+          reviewedAt: leaveRequest.reviewedAt,
+          reviewedBy: faculty.fullname,
+          approvalRemarks,
+        },
+      });
+    } catch (socketError) {
+      // Don't fail the request if socket emit fails
+      console.error('Error emitting socket update:', socketError);
+    }
 
     res.json({
       success: true,

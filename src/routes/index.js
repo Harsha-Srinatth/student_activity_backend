@@ -2,6 +2,7 @@ import express from "express";
 import authRoutes from "./authRoutes.js";
 import studentRoutes from "./studentRoutes.js";
 import facultyRoutes from "./facultyRoutes.js";
+import adminRoutes from "./adminRoutes.js";
 
 const router = express.Router();
 
@@ -9,6 +10,7 @@ const router = express.Router();
 router.use("/", authRoutes);
 router.use("/student", studentRoutes);
 router.use("/faculty", facultyRoutes);
+router.use("/admin", adminRoutes);
 
 // Shared API routes (for backward compatibility with /api prefix)
 import { checkauth, requireRole } from "../middlewares/authCheck.js";

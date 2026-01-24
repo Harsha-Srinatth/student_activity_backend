@@ -1,4 +1,5 @@
 import StudentDetails from "../../models/student/studentDetails.js";
+  import { emitAttendanceUpdateToStudents } from "../../socket/socketHandlers.js";
 
 /**
  * GET /student/attendance
@@ -49,7 +50,7 @@ export const getStudentAttendance = async (req, res) => {
       success: true,
       data: {
         studentid: student.studentid,
-        semester: student.semester,
+        semester: student.semester, 
         totalClasses,
         presentClasses,
         absentClasses,

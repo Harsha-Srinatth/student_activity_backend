@@ -82,6 +82,19 @@ const getStudentAchievements = async (req, res) => {
           ...vf,
         };
       }),
+      clubs: student.clubsJoined.map(club => {
+        const vf = getVerificationInfo(club.verification);
+        return {
+          id: club._id?.toString() || Math.random().toString(36).substr(2, 9),
+          title: club.title,
+          role: club.role,
+          clubName: club.clubName,
+          joinedOn: club.joinedOn,
+          imageUrl: club.imageUrl,
+          verifiedBy: vf.verifiedByName || vf.verifiedById,
+          ...vf,
+        };
+      }),
       hackathons: student.workshops
         .filter(workshop => {
           const title = workshop.title?.toLowerCase() || '';

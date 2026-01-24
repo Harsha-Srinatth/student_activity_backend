@@ -1,5 +1,15 @@
 import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import { saveApprovalToFaculty, buildApprovalData, getFacultyName } from "../../utils/facultyApprovalHelper.js";
+import { calculateFacultyStats } from "./faculty_Dashboard_Details.js";
+import { 
+  emitApprovalUpdate, 
+  emitStudentCountsUpdate, 
+  emitFacultyPendingApprovalsUpdate,
+  emitFacultyStatsUpdate,
+  emitUserNotification,
+  emitStudentDashboardDataUpdate
+} from "../../utils/socketEmitter.js";
 
 // Get all students with pending approvals for the current faculty
 const getPendingApprovals = async (req, res) => {
@@ -176,40 +186,75 @@ const handleApproval = async (req, res) => {
     };
 
     // Helper to find and update achievement
+    // IMPORTANT: Find the PENDING one, not just the first match (there may be duplicates)
     const findAndUpdateAchievement = () => {
-      if (type === 'certificate') {
-        const idx = student.certifications.findIndex(c => c.title === description);
-        if (idx !== -1 && (!student.certifications[idx].verification || student.certifications[idx].verification.status === 'pending')) {
+      if (type === 'certificate') {  
+        // Find the FIRST pending certificate with matching title
+        const idx = student.certifications.findIndex(c => 
+          c.title === description && 
+          (!c.verification || c.verification.status === 'pending')
+        );
+        
+        if (idx !== -1) {
+          const cert = student.certifications[idx];
+          const currentStatus = cert.verification?.status;
           student.certifications[idx].verification = verificationData;
           return student.certifications[idx];
+        } else {
+          // Check if certificate exists but is already processed
+          const existingIdx = student.certifications.findIndex(c => c.title === description);
+          if (existingIdx !== -1) {
+            const existingStatus = student.certifications[existingIdx].verification?.status;
+          } else {
+          }
         }
       } else if (type === 'workshop') {
-        const idx = student.workshops.findIndex(w => w.title === description);
-        if (idx !== -1 && (!student.workshops[idx].verification || student.workshops[idx].verification.status === 'pending')) {
+        // Find the FIRST pending workshop with matching title
+        const idx = student.workshops.findIndex(w => 
+          w.title === description && 
+          (!w.verification || w.verification.status === 'pending')
+        );
+        if (idx !== -1) {
           student.workshops[idx].verification = verificationData;
           return student.workshops[idx];
         }
       } else if (type === 'club') {
-        const idx = student.clubsJoined.findIndex(c => (c.title === description || c.clubName === description));
-        if (idx !== -1 && (!student.clubsJoined[idx].verification || student.clubsJoined[idx].verification.status === 'pending')) {
+        // Find the FIRST pending club with matching title
+        const idx = student.clubsJoined.findIndex(c => 
+          (c.title === description || c.clubName === description) && 
+          (!c.verification || c.verification.status === 'pending')
+        );
+        if (idx !== -1) {
           student.clubsJoined[idx].verification = verificationData;
           return student.clubsJoined[idx];
         }
       } else if (type === 'internship') {
-        const idx = student.internships.findIndex(i => `${i.organization} - ${i.role}` === description);
-        if (idx !== -1 && (!student.internships[idx].verification || student.internships[idx].verification.status === 'pending')) {
+        // Find the FIRST pending internship with matching description
+        const idx = student.internships.findIndex(i => 
+          `${i.organization} - ${i.role}` === description && 
+          (!i.verification || i.verification.status === 'pending')
+        );
+        if (idx !== -1) {
           student.internships[idx].verification = verificationData;
           return student.internships[idx];
         }
       } else if (type === 'project') {
-        const idx = student.projects.findIndex(p => p.title === description);
-        if (idx !== -1 && (!student.projects[idx].verification || student.projects[idx].verification.status === 'pending')) {
+        // Find the FIRST pending project with matching title
+        const idx = student.projects.findIndex(p => 
+          p.title === description && 
+          (!p.verification || p.verification.status === 'pending')
+        );
+        if (idx !== -1) {
           student.projects[idx].verification = verificationData;
           return student.projects[idx];
         }
       } else if (type === 'other') {
-        const idx = student.others.findIndex(o => o.title === description);
-        if (idx !== -1 && (!student.others[idx].verification || student.others[idx].verification.status === 'pending')) {
+        // Find the FIRST pending other achievement with matching title
+        const idx = student.others.findIndex(o => 
+          o.title === description && 
+          (!o.verification || o.verification.status === 'pending')
+        );
+        if (idx !== -1) {
           student.others[idx].verification = verificationData;
           return student.others[idx];
         }
@@ -221,8 +266,19 @@ const handleApproval = async (req, res) => {
     if (!achievement) {
       return res.status(404).json({ message: 'Pending approval not found or already processed' });
     }
-
     await student.save();
+    // Refresh student from database to ensure we have the latest data
+    // This ensures counts are calculated from the saved state
+    const refreshedStudent = await StudentDetails.findOne({ studentid })
+      .select('certifications workshops clubsJoined projects internships others')
+      .lean();
+    
+    if (!refreshedStudent) {
+      console.error('⚠️ Failed to refresh student after save, using in-memory student');
+    }
+
+    // Use refreshed student if available, otherwise use the saved student
+    const studentForCounts = refreshedStudent || student.toObject();
 
     // Save approval to faculty using shared helper
     try {
@@ -244,14 +300,62 @@ const handleApproval = async (req, res) => {
       imageUrl: achievement?.imageUrl || achievement?.certificateUrl,
     };
 
-    res.json({ 
+    // Emit real-time updates via Socket.IO
+    try {
+      // Use shared helper to calculate and emit dashboard updates
+      // Pass already-fetched student data to avoid duplicate database query
+      await emitStudentDashboardDataUpdate(studentid, { [studentid]: studentForCounts });
+      
+      // Also emit approval change notification with additional context
+      emitApprovalUpdate(studentid, {
+        // Send minimal change info instead of full arrays
+        change: {
+          type,
+          description,
+          status: action === 'approve' ? 'approved' : 'rejected',
+          reviewedBy: facultyName,
+          reviewedOn: new Date(),
+        },
+      });
+
+      // Emit notification to student
+      emitUserNotification(studentid, {
+        type: 'approval',
+        title: `Submission ${action === 'approve' ? 'Approved' : 'Rejected'}`,
+        message: `${type} "${description}" has been ${action === 'approve' ? 'approved' : 'rejected'} by ${facultyName}`,
+        data: approvalResponse,
+      });
+
+      // Calculate and emit updated faculty stats in real-time
+      try {
+        // Calculate updated stats for the faculty using the same function as dashboard
+        const facultyStats = await calculateFacultyStats(currentFacultyId);
+        // Emit updated stats to faculty
+        emitFacultyStatsUpdate(currentFacultyId, facultyStats);
+      } catch (statsError) {
+        console.error('Error calculating faculty stats:', statsError);
+        // Fallback: just signal to refresh
+        emitFacultyStatsUpdate(currentFacultyId, {
+          pendingApprovals: null, // Signal to refresh
+        });
+      }
+    } catch (socketError) {
+      // Don't fail the request if socket emit fails
+      console.error('Error emitting socket update:', socketError);
+    } 
+    const response = { 
       message: `Submission ${action}d successfully`,
       approval: approvalResponse
-    });
+    };
+    return res.json(response);
 
   } catch (error) {
-    console.error('Error handling approval:', error);
-    res.status(500).json({ error: error.message });
+      console.error('❌ Error handling approval:', error);
+      console.error('Error stack:', error.stack);
+    // Make sure we always send a response
+    if (!res.headersSent) {
+      return res.status(500).json({ error: error.message });
+    }
   }
 };
 
@@ -479,6 +583,18 @@ const bulkApproval = async (req, res) => {
 
     await student.save();
 
+    // Refresh student from database to ensure we have the latest data
+    const refreshedStudent = await StudentDetails.findOne({ studentid })
+      .select('certifications workshops clubsJoined projects internships others')
+      .lean();
+    
+    if (!refreshedStudent) {
+      console.error('⚠️ Failed to refresh student after bulk save, using in-memory student');
+    }
+
+    // Use refreshed student if available, otherwise use the saved student
+    const studentForCounts = refreshedStudent || student.toObject();
+
     // Save all approvals to faculty using helper
     if (approvalRecords.length > 0) {
       for (const approvalData of approvalRecords) {
@@ -488,6 +604,89 @@ const bulkApproval = async (req, res) => {
           console.error(`Failed to save approval for ${approvalData.type}: ${approvalData.description}`, error.message);
         }
       }
+    }
+
+    // Emit real-time updates via Socket.IO
+    try {
+      // Calculate ALL updated counts (matching the structure from student_Dash.js)
+      // Use refreshed student data if available
+      const certs = studentForCounts.certifications || [];
+      const workshops = studentForCounts.workshops || [];
+      const clubs = studentForCounts.clubsJoined || [];
+      const projects = studentForCounts.projects || [];
+      const internships = studentForCounts.internships || [];
+      const others = studentForCounts.others || [];
+
+      const certificationsCount = certs.filter(c => c.verification?.status === 'approved').length;
+      const workshopsCount = workshops.filter(w => w.verification?.status === 'approved').length;
+      const clubsJoinedCount = clubs.filter(c => c.verification?.status === 'approved').length;
+      const projectsCount = projects.filter(p => p.verification?.status === 'approved').length;
+      const hackathonsCount = 0; // Add if hackathons are tracked separately
+      
+      const pendingCount = certs.filter(c => c.verification?.status === 'pending').length +
+                          workshops.filter(w => w.verification?.status === 'pending').length +
+                          clubs.filter(c => c.verification?.status === 'pending').length +
+                          projects.filter(p => p.verification?.status === 'pending').length +
+                          internships.filter(i => i.verification?.status === 'pending').length +
+                          others.filter(o => o.verification?.status === 'pending').length;
+      
+      const approvedCount = certs.filter(c => c.verification?.status === 'approved').length +
+                           workshops.filter(w => w.verification?.status === 'approved').length +
+                           clubs.filter(c => c.verification?.status === 'approved').length +
+                           projects.filter(p => p.verification?.status === 'approved').length +
+                           internships.filter(i => i.verification?.status === 'approved').length +
+                           others.filter(o => o.verification?.status === 'approved').length;
+      
+      const rejectedCount = certs.filter(c => c.verification?.status === 'rejected').length +
+                           workshops.filter(w => w.verification?.status === 'rejected').length +
+                           clubs.filter(c => c.verification?.status === 'rejected').length +
+                           projects.filter(p => p.verification?.status === 'rejected').length +
+                           internships.filter(i => i.verification?.status === 'rejected').length +
+                           others.filter(o => o.verification?.status === 'rejected').length;
+
+      const countsToEmit = {
+        certificationsCount,
+        workshopsCount,
+        clubsJoinedCount,
+        projectsCount,
+        hackathonsCount,
+        pendingApprovalsCount: pendingCount,
+        approvedCount,
+        rejectedCount,
+        pendingCount,
+      };
+      // Emit ALL counts update (matching frontend expectations)
+      emitStudentCountsUpdate(studentid, countsToEmit);
+      
+      // Emit approval update notification
+      emitApprovalUpdate(studentid, {
+        counts: {
+          pendingCount,
+          approvedCount,
+          rejectedCount,
+        },
+      });
+      // Emit notification to student
+      emitUserNotification(studentid, {
+        type: 'approval',
+        title: `Bulk ${action === 'approve' ? 'Approval' : 'Rejection'}`,
+        message: `${updatedCount} submission(s) have been ${action === 'approve' ? 'approved' : 'rejected'} by ${facultyName}`,
+      });
+
+      // Calculate and emit updated faculty stats in real-time
+      try {
+        const facultyStats = await calculateFacultyStats(currentFacultyId);
+        emitFacultyStatsUpdate(currentFacultyId, facultyStats);
+      } catch (statsError) {
+        console.error('Error calculating faculty stats:', statsError);
+        // Fallback: just signal to refresh
+        emitFacultyStatsUpdate(currentFacultyId, {
+          pendingApprovals: null, // Signal to refresh
+        });
+      }
+    } catch (socketError) {
+      // Don't fail the request if socket emit fails
+      console.error('Error emitting socket update:', socketError);
     }
 
     res.json({ 

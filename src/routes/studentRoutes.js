@@ -1,4 +1,5 @@
 import express from "express";
+import { getAnnouncementsForUser } from "../controllers/shared/getAnnouncements.js";
 import { checkauth, requireRole } from "../middlewares/authCheck.js";
 import upload from "../middlewares/upload.js";
 
@@ -34,7 +35,7 @@ router.get("/all-approvals", getAllStudentApprovals);
 
 // Document Management
 router.post("/upload/Docs", upload.single("image"), studentDocUpload);
-router.get("/:studentid/portfolio-pdf", generateStudentPortfolioPDF);
+router.get("/portfolio-pdf", generateStudentPortfolioPDF);
 
 // Club Enrollment
 router.post("/enrollments", enrollInClub);
@@ -46,6 +47,9 @@ router.get("/clubs/:clubId/members", getClubMembers);
 router.post("/leave/submit", studentReqForLeave);
 router.get("/leave/requests", studentLeaveRequests);
 router.get("/leave/details/:requestId", getSpecificLeaveReqDetails);
+
+// Announcements
+router.get("/announcements", getAnnouncementsForUser);
 
 export default router;
 

@@ -63,7 +63,15 @@ const student_Dashboard_Details = async (req, res) => {
               }
             }
           },
-          clubsJoinedCount: { $size: { $ifNull: ["$clubsJoined", []] } },
+          clubsJoinedCount: {
+            $size: {
+              $filter: {
+                input: "$clubsJoined",
+                as: "club",
+                cond: { $eq: ["$$club.verification.status", "approved"] }
+              }
+            }
+          },
           projectsCount: {
             $size: {
               $filter: {
@@ -78,6 +86,7 @@ const student_Dashboard_Details = async (req, res) => {
             $add: [
               { $size: { $filter: { input: "$certifications", as: "c", cond: { $eq: ["$$c.verification.status", "approved"] } } } },
               { $size: { $filter: { input: "$workshops", as: "w", cond: { $eq: ["$$w.verification.status", "approved"] } } } },
+              { $size: { $filter: { input: "$clubsJoined", as: "club", cond: { $eq: ["$$club.verification.status", "approved"] } } } },
               { $size: { $filter: { input: "$projects", as: "p", cond: { $eq: ["$$p.verification.status", "approved"] } } } },
               { $size: { $filter: { input: "$internships", as: "i", cond: { $eq: ["$$i.verification.status", "approved"] } } } }
             ]
@@ -86,6 +95,7 @@ const student_Dashboard_Details = async (req, res) => {
             $add: [
               { $size: { $filter: { input: "$certifications", as: "c", cond: { $eq: ["$$c.verification.status", "rejected"] } } } },
               { $size: { $filter: { input: "$workshops", as: "w", cond: { $eq: ["$$w.verification.status", "rejected"] } } } },
+              { $size: { $filter: { input: "$clubsJoined", as: "club", cond: { $eq: ["$$club.verification.status", "rejected"] } } } },
               { $size: { $filter: { input: "$projects", as: "p", cond: { $eq: ["$$p.verification.status", "rejected"] } } } },
               { $size: { $filter: { input: "$internships", as: "i", cond: { $eq: ["$$i.verification.status", "rejected"] } } } }
             ]
@@ -94,6 +104,7 @@ const student_Dashboard_Details = async (req, res) => {
             $add: [
               { $size: { $filter: { input: "$certifications", as: "c", cond: { $eq: ["$$c.verification.status", "pending"] } } } },
               { $size: { $filter: { input: "$workshops", as: "w", cond: { $eq: ["$$w.verification.status", "pending"] } } } },
+              { $size: { $filter: { input: "$clubsJoined", as: "club", cond: { $eq: ["$$club.verification.status", "pending"] } } } },
               { $size: { $filter: { input: "$projects", as: "p", cond: { $eq: ["$$p.verification.status", "pending"] } } } },
               { $size: { $filter: { input: "$internships", as: "i", cond: { $eq: ["$$i.verification.status", "pending"] } } } }
             ]
@@ -101,6 +112,7 @@ const student_Dashboard_Details = async (req, res) => {
           // Get all achievement arrays for approvals
           certifications: 1,
           workshops: 1,
+          clubsJoined: 1,
           projects: 1,
           internships: 1,
         }
@@ -119,7 +131,7 @@ const student_Dashboard_Details = async (req, res) => {
         .map((item, index) => ({
           _id: item._id?.toString() || `${type}-${index}`,
           type,
-          description: item.title || item.name || `${type} item`,
+          description: type === 'club' ? (item.title || item.clubName || `${type} item`) : (item.title || item.name || `${type} item`),
           status: item.verification?.status || "pending",
           reviewedBy: item.verification?.verifiedBy,
           reviewedOn: item.verification?.date,
@@ -134,6 +146,7 @@ const student_Dashboard_Details = async (req, res) => {
     const allApprovals = [
       ...buildApprovals(student.certifications || [], "certificate"),
       ...buildApprovals(student.workshops || [], "workshop"),
+      ...buildApprovals(student.clubsJoined || [], "club"),
       ...buildApprovals(student.projects || [], "project"),
       ...buildApprovals(student.internships || [], "internship"),
     ];
@@ -223,7 +236,7 @@ export const getAllStudentApprovals = async (req, res) => {
 
     // Single query to get all achievement data
     const student = await StudentDetails.findOne({ studentid })
-      .select('certifications workshops projects internships facultyid')
+      .select('certifications workshops clubsJoined projects internships facultyid')
       .lean();
 
     if (!student) {
@@ -235,7 +248,7 @@ export const getAllStudentApprovals = async (req, res) => {
       return (items || []).map((item, index) => ({
         _id: item._id?.toString() || `${type}-${index}`,
         type,
-        description: item.title || item.name || `${type} item`,
+        description: type === 'club' ? (item.title || item.clubName || `${type} item`) : (item.title || item.name || `${type} item`),
         status: item.verification?.status || "pending",
         reviewedBy: item.verification?.verifiedBy,
         reviewedOn: item.verification?.date,
@@ -248,6 +261,7 @@ export const getAllStudentApprovals = async (req, res) => {
     const allApprovals = [
       ...buildApprovals(student.certifications, "certificate"),
       ...buildApprovals(student.workshops, "workshop"),
+      ...buildApprovals(student.clubsJoined, "club"),
       ...buildApprovals(student.projects, "project"),
       ...buildApprovals(student.internships, "internship"),
     ];

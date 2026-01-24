@@ -125,9 +125,6 @@ async function calculateFacultyStats(facultyId) {
             $project: {
               allItems: {
                 $concatArrays: [
-                  { $map: { input: { $ifNull: ["$certifications", []] }, as: "c", in: { status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
-                  { $map: { input: { $ifNull: ["$workshops", []] }, as: "w", in: { status: { $ifNull: ["$$w.verification.status", "pending"] } } } },
-                  { $map: { input: { $ifNull: ["$clubsJoined", []] }, as: "c", in: { status: { $ifNull: ["$$c.verification.status", "pending"] } } } },
                   { $map: { input: { $ifNull: ["$internships", []] }, as: "i", in: { status: { $ifNull: ["$$i.verification.status", "pending"] } } } },
                   { $map: { input: { $ifNull: ["$projects", []] }, as: "p", in: { status: { $ifNull: ["$$p.verification.status", "pending"] } } } },
                   { $map: { input: { $ifNull: ["$others", []] }, as: "o", in: { status: { $ifNull: ["$$o.verification.status", "pending"] } } } }
@@ -172,28 +169,26 @@ async function calculateFacultyStats(facultyId) {
   const approvedCertifications = result.approvedCertifications[0]?.count || 0;
   const approvedWorkshops = result.approvedWorkshops[0]?.count || 0;
   const approvedClubs = result.approvedClubs[0]?.count || 0;
-  const totalApprovals = result.totalApprovals[0]?.count || 0;
+  const totalApprovals = result.totalApprovals[0]?.count+result.approvedCertifications[0]?.count+result.approvedWorkshops[0]?.count+result.approvedClubs[0]?.count || 0;
   const pendingLeaveRequests = result.pendingLeaveRequests[0]?.count || 0;
   const approvedLeaveRequests = result.approvedLeaveRequests[0]?.count || 0;
   const rejectedLeaveRequests = result.rejectedLeaveRequests[0]?.count || 0;
   
-  const totalApproved = approvedCertifications + approvedWorkshops + approvedClubs;
-  const approvalRate = totalApprovals > 0 ? Math.round((totalApproved / totalApprovals) * 100) : 0;
-
   return {
     totalStudents,
     pendingApprovals,
     approvedCertifications,
     approvedWorkshops,
     approvedClubs,
-    totalApproved,
     totalApprovals,
-    approvalRate,
     pendingLeaveRequests,
     approvedLeaveRequests,
     rejectedLeaveRequests,
     lastUpdated: new Date()
   };
 }
+
+// Export the stats calculation function for use in other controllers
+export { calculateFacultyStats };
 
 export default faculty_Dashboard_Details;
