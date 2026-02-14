@@ -2,6 +2,23 @@ import mongoose from "mongoose";
 
 // Sub-Schemas
 
+// Section Assignment Schema
+const SectionAssignmentSchema = new mongoose.Schema(
+  {
+    section: { type: String, required: true },
+    assignmentType: { 
+      type: String, 
+      required: true,
+      enum: ["Mentor", "Academic Advisor", "Project Guide", "Research Supervisor", "Course Coordinator"],
+      default: "Mentor"
+    },
+    notes: { type: String },
+    assignedBy: { type: String }, // HOD ID who assigned
+    assignedAt: { type: Date, default: Date.now }
+  },
+  { timestamps: true, _id: false }
+);
+
 // Leave approval tracking schema
 const LeaveApprovalActionSchema = new mongoose.Schema(
   {
@@ -86,6 +103,9 @@ const FacultySchema = new mongoose.Schema(
     // Preferences
     notificationsEnabled: { type: Boolean, default: true },
     emailNotifications: { type: Boolean, default: true },
+
+    // Assignment Tracking
+    sectionsAssigned: { type: [SectionAssignmentSchema], default: [] },
   },
   { timestamps: true }
 );

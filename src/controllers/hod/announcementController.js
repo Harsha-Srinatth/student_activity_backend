@@ -1,5 +1,5 @@
 import Announcement from "../../models/shared/announcementSchema.js";
-import Admin from "../../models/shared/Administrator.js";
+import HOD from "../../models/Hod/hodDetails.js";
 import { emitAnnouncementUpdate } from "../../utils/socketEmitter.js";
 
 /**
@@ -7,23 +7,25 @@ import { emitAnnouncementUpdate } from "../../utils/socketEmitter.js";
  */
 export const createAnnouncement = async (req, res) => {
   try {
-    const { adminId, collegeId } = req.user;
+    const { hodId, collegeId } = req.user;
     const { title, content, targetAudience, priority, expiresAt } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ message: "Title and content are required" });
     }
 
-    const admin = await Admin.findOne({ adminId }).select("fullname");
-    if (!admin) {
-      return res.status(404).json({ message: "Admin not found" });
+    if (!hodId) {
+      return res.status(400).json({ message: "HOD ID is required" });
+    }
+
+    const hod = await HOD.findOne({ hodId: hodId }).select("fullname");
+    if (!hod) {
+      return res.status(404).json({ message: "HOD not found" });
     }
 
     // Handle image upload if present
     let imageData = null;
     if (req.file) {
-      // req.file is provided by multer middleware with CloudinaryStorage
-      // CloudinaryStorage provides: path (URL), filename (public_id)
       const fileUrl = req.file.path || req.file.secure_url;
       const publicId = req.file.filename || req.file.public_id;
       
@@ -52,8 +54,8 @@ export const createAnnouncement = async (req, res) => {
       targetAudience: targetAudienceArray,
       priority: priority || "medium",
       createdBy: {
-        adminId,
-        adminName: admin.fullname || "Admin",
+        hodId: hodId,
+        adminName: hod.fullname || "HOD",
       },
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       isActive: true,
@@ -90,7 +92,7 @@ export const createAnnouncement = async (req, res) => {
 };
 
 /**
- * Get all announcements for admin's college
+ * Get all announcements for HOD's college
  */
 export const getAnnouncements = async (req, res) => {
   try {
@@ -100,7 +102,6 @@ export const getAnnouncements = async (req, res) => {
     const query = { collegeId };
     
     if (targetAudience) {
-      // targetAudience is an array, check if it contains the specified value or "both"
       query.$and = query.$and || [];
       query.$and.push({
         $or: [
@@ -113,12 +114,9 @@ export const getAnnouncements = async (req, res) => {
     if (isActive !== undefined) {
       query.isActive = isActive === "true";
     } else {
-      // By default, only show active announcements
       query.isActive = true;
     }
 
-    // Admin should see ALL announcements (including expired) for management purposes
-    // Only filter expired if explicitly requested via includeExpired=false
     if (includeExpired === "false") {
       query.$and = query.$and || [];
       query.$and.push({
@@ -128,13 +126,8 @@ export const getAnnouncements = async (req, res) => {
         ]
       });
     }
-    // Otherwise, show all announcements regardless of expiration (for admin management)
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    // Debug logging
-    console.log("Admin fetching announcements for collegeId:", collegeId);
-    console.log("Query:", JSON.stringify(query, null, 2));
 
     const announcements = await Announcement.find(query)
       .sort({ createdAt: -1 })
@@ -143,10 +136,6 @@ export const getAnnouncements = async (req, res) => {
 
     const total = await Announcement.countDocuments(query);
 
-    console.log(`Admin found ${announcements.length} announcements (total: ${total})`);
-    console.log(`Announcements data:`, announcements.map(a => ({ id: a._id, title: a.title })));
-
-    // Always return an array, even if empty
     return res.status(200).json({
       success: true,
       data: announcements || [],
@@ -192,7 +181,6 @@ export const getAnnouncementById = async (req, res) => {
 
 /**
  * Update announcement
- * Any admin from the same college can update any announcement (not just their own)
  */
 export const updateAnnouncement = async (req, res) => {
   try {
@@ -200,7 +188,6 @@ export const updateAnnouncement = async (req, res) => {
     const { id } = req.params;
     const { title, content, targetAudience, priority, isActive, expiresAt } = req.body;
 
-    // Check if announcement exists and belongs to the same college
     const announcement = await Announcement.findOne({
       _id: id,
       collegeId,
@@ -212,13 +199,10 @@ export const updateAnnouncement = async (req, res) => {
 
     // Handle image upload if present
     if (req.file) {
-      // req.file is provided by multer middleware with CloudinaryStorage
       const fileUrl = req.file.path || req.file.secure_url;
       const publicId = req.file.filename || req.file.public_id;
       
       if (fileUrl) {
-        // TODO: Optionally delete old image from Cloudinary if it exists
-        // For now, we'll just update with the new image
         announcement.image = {
           url: fileUrl,
           publicId: publicId || null,
@@ -229,7 +213,6 @@ export const updateAnnouncement = async (req, res) => {
     if (title) announcement.title = title;
     if (content) announcement.content = content;
     
-    // Handle targetAudience - it can be a string or array from FormData
     if (targetAudience) {
       if (Array.isArray(targetAudience)) {
         announcement.targetAudience = targetAudience;
@@ -277,14 +260,12 @@ export const updateAnnouncement = async (req, res) => {
 
 /**
  * Delete announcement
- * Any admin from the same college can delete any announcement (not just their own)
  */
 export const deleteAnnouncement = async (req, res) => {
   try {
     const { collegeId } = req.user;
     const { id } = req.params;
 
-    // Check if announcement exists and belongs to the same college
     const announcement = await Announcement.findOne({
       _id: id,
       collegeId,

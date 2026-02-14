@@ -12,7 +12,7 @@ const updateFacultySettings = async (req, res) => {
       "mobile",
       "designation",
       "dept",
-      "institution",
+      "collegeId",
       "notificationsEnabled",
       "emailNotifications",
     ];
@@ -26,7 +26,7 @@ const updateFacultySettings = async (req, res) => {
       { $set: updates },
       { new: true }
     ).select(
-      "facultyid fullname email mobile designation dept institution image notificationsEnabled emailNotifications"
+      "facultyid fullname email mobile designation dept collegeId image notificationsEnabled emailNotifications"
     );
 
     if (!faculty) {

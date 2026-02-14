@@ -29,7 +29,11 @@ router.use(checkauth);
 
 // Debug middleware to log all requests to faculty routes
 router.use((req, res, next) => {
-  console.log(`🔍 Faculty route hit: ${req.method} ${req.path}`);
+  console.log(`🔍 Faculty route hit: ${req.method} ${req.path}`, {
+    originalUrl: req.originalUrl,
+    baseUrl: req.baseUrl,
+    url: req.url
+  });
   next();
 });
 

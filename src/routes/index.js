@@ -3,14 +3,18 @@ import authRoutes from "./authRoutes.js";
 import studentRoutes from "./studentRoutes.js";
 import facultyRoutes from "./facultyRoutes.js";
 import adminRoutes from "./adminRoutes.js";
+import hodRoutes from "./hodRoutes.js";
 
 const router = express.Router();
 
 // Mount route modules
-router.use("/", authRoutes);
+// IMPORTANT: More specific routes (like /faculty, /student) must come BEFORE catch-all routes (like /)
+// This ensures /faculty/home matches facultyRoutes, not authRoutes /faculty/:facultyId
 router.use("/student", studentRoutes);
 router.use("/faculty", facultyRoutes);
 router.use("/admin", adminRoutes);
+router.use("/hod", hodRoutes);
+router.use("/", authRoutes); // Auth routes last to avoid catching /faculty/*, /student/*, etc.
 
 // Shared API routes (for backward compatibility with /api prefix)
 import { checkauth, requireRole } from "../middlewares/authCheck.js";

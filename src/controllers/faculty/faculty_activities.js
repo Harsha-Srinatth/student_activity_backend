@@ -33,8 +33,8 @@ const getFacultyActivities = async (req, res) => {
       .sort((a, b) => new Date(b.approvedOn) - new Date(a.approvedOn))
       .slice(0, 10);
 
-    // Backfill missing imageUrl/institution for approvals by reading from student records
-    const missingData = recentApprovals.some(a => !a.imageUrl || !a.institution || !a.reviewedBy);
+    // Backfill missing imageUrl/collegeName for approvals by reading from student records
+    const missingData = recentApprovals.some(a => !a.imageUrl || !a.collegeName || !a.reviewedBy);
     if (missingData) {
       const studentIds = [...new Set(recentApprovals.map(a => a.studentid).filter(Boolean))];
       const students = await StudentDetails.find({ studentid: { $in: studentIds } })
@@ -50,7 +50,7 @@ const getFacultyActivities = async (req, res) => {
       
       const byId = new Map(students.map(s => [s.studentid, s]));
       recentApprovals = recentApprovals.map(a => {
-        if (a.imageUrl && a.institution && a.reviewedBy) return a;
+        if (a.imageUrl && a.collegeName && a.reviewedBy) return a;
         const stu = byId.get(a.studentid);
         if (!stu) return a;
         let imageUrl = a.imageUrl;
@@ -77,16 +77,17 @@ const getFacultyActivities = async (req, res) => {
           }
         }
         
-        // Get institution from college map
-        let institution = a.institution;
-        if (!institution && stu.collegeId) {
-          institution = collegeMap.get(stu.collegeId) || null;
+        // Get collegeName from college map (using collegeId)
+        let collegeName = a.collegeName || a.institution; // Support legacy institution field
+        if (!collegeName && stu.collegeId) {
+          collegeName = collegeMap.get(stu.collegeId) || null;
         }
         
         return {
           ...a,
           imageUrl: imageUrl || a.imageUrl,
-          institution: institution || a.institution,
+          collegeName: collegeName || a.collegeName || a.institution, // Use collegeName, fallback to institution for legacy
+          collegeId: stu.collegeId || a.collegeId, // Include collegeId
           reviewedBy: a.reviewedBy || undefined,
         };
       });

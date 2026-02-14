@@ -1,5 +1,6 @@
 import ClubDetail from "../../models/shared/clubSchema.js";
 import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 /**
  * GET all available clubs
@@ -8,9 +9,42 @@ export const getAllClubs = async (req, res) => {
   try {
     const clubs = await ClubDetail.find({}).lean();
     
+    // Populate faculty coordinator and student head details
+    const clubsWithDetails = await Promise.all(
+      clubs.map(async (club) => {
+        let facultyCoordinatorDetails = null;
+        let studentHeadDetails = null;
+
+        if (club.facultyCoordinator) {
+          const faculty = await FacultyDetails.findOne({ 
+            facultyid: club.facultyCoordinator 
+          })
+            .select("facultyid fullname email designation")
+            .lean();
+          facultyCoordinatorDetails = faculty;
+        }
+
+        if (club.studentHead) {
+          const student = await StudentDetails.findOne({ 
+            studentid: club.studentHead 
+          })
+            .select("studentid fullname email programName semester")
+            .lean();
+          studentHeadDetails = student;
+        }
+
+        return {
+          ...club,
+          facultyCoordinatorDetails,
+          studentHeadDetails,
+          memberCount: club.members?.length || 0,
+        };
+      })
+    );
+    
     return res.json({
       ok: true,
-      clubs: clubs || []
+      clubs: clubsWithDetails || []
     });
   } catch (err) {
     console.error("getAllClubs error:", err);

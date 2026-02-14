@@ -56,7 +56,7 @@ export const getAnnouncementsForUser = async (req, res) => {
     const announcements = await Announcement.find(finalQuery)
       .sort({ createdAt: -1 })
       .limit(50)
-      .select("title content priority createdAt targetAudience expiresAt isActive");
+      .select("title content priority createdAt targetAudience expiresAt isActive image");
 
     console.log(`Found ${announcements.length} announcements matching query`);
     console.log("=".repeat(50));

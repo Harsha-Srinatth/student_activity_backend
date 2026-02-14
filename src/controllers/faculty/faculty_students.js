@@ -14,7 +14,7 @@ export const getStudentsByFaculty = async (req, res) => {
     // Get students with the specified faculty ID, sorted by studentid
     const students = await StudentDetails.find({ facultyid })
       // include attendance so frontend can compute percentage
-      .select('studentid fullname username email image programName semester dateofjoin institution mobileno dept attendance')
+      .select('studentid fullname username email image programName semester dateofjoin collegeId mobileno dept attendance')
       .sort({ studentid: 1 }); // Sort by studentid in ascending order
 
     // Get total count
@@ -106,7 +106,7 @@ export const getAllFaculty = async (req, res) => {
   try {
     // Only select basic details needed for the faculty page
     const facultyList = await FacultyDetails.find({})
-      .select('facultyid fullname institution dept designation email mobile image');
+      .select('facultyid fullname collegeId dept designation email mobile image');
     res.json({ success: true, faculty: facultyList });
   } catch (error) {
     console.error('Error fetching all faculty:', error);

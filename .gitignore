@@ -29,6 +29,9 @@ coverage/
 dist/
 build/
 
+# Server files (local vs production differences)
+server.js
+
 # Temporary files
 *.tmp
 *.swp

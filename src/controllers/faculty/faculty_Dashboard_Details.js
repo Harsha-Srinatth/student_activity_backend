@@ -1,11 +1,20 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
+import College from "../../models/shared/collegeSchema.js";
 
 const faculty_Dashboard_Details = async (req, res) => {
   try {
+    console.log('📊 Faculty Dashboard Details endpoint hit:', {
+      method: req.method,
+      path: req.path,
+      originalUrl: req.originalUrl,
+      user: req.user ? { facultyid: req.user.facultyid, role: req.user.role } : 'no user'
+    });
+    
     const currentFacultyId = req.user.facultyid;
     
     if (!currentFacultyId) {
+      console.error('❌ Faculty ID not found in token');
       return res.status(401).json({ error: 'Faculty ID not found in token' });
     }
 
@@ -15,12 +24,21 @@ const faculty_Dashboard_Details = async (req, res) => {
       { lastLogin: new Date() },
       { 
         new: true, // Return updated document
-        select: 'fullname facultyid institution dept designation approvalsCount lastLogin email mobile username dateofjoin image'
+        select: 'fullname facultyid collegeId dept designation approvalsCount lastLogin email mobile username dateofjoin image'
       }
     );
 
     if (!faculty) {
       return res.status(404).json({ error: 'Faculty not found' });
+    }
+
+    // Get college name from collegeId
+    let collegeName = null;
+    if (faculty.collegeId) {
+      const college = await College.findOne({ collegeId: faculty.collegeId })
+        .select('collegeName')
+        .lean();
+      collegeName = college?.collegeName || null;
     }
 
     // Calculate statistics dynamically (always fresh)
@@ -30,7 +48,8 @@ const faculty_Dashboard_Details = async (req, res) => {
       faculty: {
         facultyid: faculty.facultyid,
         fullname: faculty.fullname,
-        institution: faculty.institution,
+        collegeId: faculty.collegeId,
+        collegeName: collegeName, // Get college name from collegeId
         dept: faculty.dept,
         designation: faculty.designation,
         email: faculty.email,
