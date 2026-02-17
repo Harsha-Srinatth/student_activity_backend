@@ -39,8 +39,4 @@ uploads/
 # Firebase credentials (NEVER commit these)
 *firebase-adminsdk*.json
 college360x-firebase-adminsdk*.json
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!jsconfig.json
+*-firebase-adminsdk-*.json
