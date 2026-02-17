@@ -1,4 +1,9 @@
 import StudentDetails from "../../models/student/studentDetails.js";
+import { 
+  emitStudentDashboardDataUpdate,
+  emitUserNotification
+} from "../../utils/socketEmitter.js";
+import { sendNotificationToStudent } from "../../utils/firebaseNotification.js";
 
 export const bulkUpsertMidMarks = async (req, res) => {
   try {
@@ -59,6 +64,43 @@ export const bulkUpsertMidMarks = async (req, res) => {
 
       await student.save();
       count += 1;
+    }
+
+    // Emit real-time updates for affected students
+    try {
+      const affectedStudentIds = [...new Set(cappedEntries.map(e => e.studentId))];
+      
+      // Notify each affected student
+      for (const studentId of affectedStudentIds) {
+        await emitStudentDashboardDataUpdate(studentId);
+        
+        emitUserNotification(studentId, {
+          type: 'marks_updated',
+          title: 'Marks Updated',
+          message: 'Your academic marks have been updated',
+          data: { semester: cappedEntries.find(e => e.studentId === studentId)?.semester }
+        });
+
+        // Send push notification to student
+        try {
+          const semester = cappedEntries.find(e => e.studentId === studentId)?.semester;
+          await sendNotificationToStudent(
+            studentId,
+            "Marks Updated 📊",
+            `Your mid-term marks for semester ${semester || ''} have been updated. Check your dashboard for details.`,
+            {
+              type: "marks_updated",
+              semester: semester?.toString() || "",
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to student ${studentId}:`, notifError);
+          // Don't fail the request if notification fails
+        }
+      }
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
     }
 
     return res.json({ success: true, count });

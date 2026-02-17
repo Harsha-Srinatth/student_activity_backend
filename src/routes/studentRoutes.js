@@ -1,5 +1,7 @@
 import express from "express";
 import { getAnnouncementsForUser } from "../controllers/shared/getAnnouncements.js";
+import { createClubAnnouncement, getMyClubs, updateClubAnnouncement, deleteClubAnnouncement } from "../controllers/shared/clubAnnouncementController.js";
+import uploadAnnouncement from "../middlewares/uploadAnnouncement.js";
 import { checkauth, requireRole } from "../middlewares/authCheck.js";
 import upload from "../middlewares/upload.js";
 
@@ -50,6 +52,10 @@ router.get("/leave/details/:requestId", getSpecificLeaveReqDetails);
 
 // Announcements
 router.get("/announcements", getAnnouncementsForUser);
+router.get("/clubs/my", getMyClubs);
+router.post("/clubs/announcements", uploadAnnouncement.single("image"), createClubAnnouncement);
+router.put("/clubs/announcements/:id", uploadAnnouncement.single("image"), updateClubAnnouncement);
+router.delete("/clubs/announcements/:id", deleteClubAnnouncement);
 
 export default router;
 

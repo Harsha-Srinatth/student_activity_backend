@@ -1,6 +1,16 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import HOD from "../../models/Hod/hodDetails.js";
+import { 
+  emitUserNotification, 
+  emitFacultyStatsUpdate 
+} from "../../utils/socketEmitter.js";
+import { 
+  emitToUsersIfConnected,
+  emitHODUpdate 
+} from "../../utils/realtimeUpdate.js";
+import { calculateFacultyStats } from "../faculty/faculty_Dashboard_Details.js";
+import { sendNotificationToFaculty, sendNotificationsToStudents } from "../../utils/firebaseNotification.js";
 
 /**
  * Get faculty members in HOD's department
@@ -41,19 +51,19 @@ export const getDepartmentFaculty = async (req, res) => {
 };
 
 /**
- * Get students in HOD's department grouped by sections
+ * Get students in HOD's department grouped by sections (programName)
  */
 export const getDepartmentStudents = async (req, res) => {
   try {
     const { collegeId, department } = req.user;
     
-    // Get students in HOD's specific department
+    // Get students in HOD's specific department only
     const students = await StudentDetails.find({ 
       collegeId,
-      dept: department 
+      dept: department // Filter by HOD's department
     })
-      .select("studentid fullname email dept semester section")
-      .sort("section semester fullname")
+      .select("studentid fullname email dept semester programName")
+      .sort("programName semester fullname")
       .lean();
 
     return res.status(200).json({
@@ -72,7 +82,8 @@ export const getDepartmentStudents = async (req, res) => {
           semester: semester,
           year: year,
           yearLabel: year === 1 ? '1st Year' : year === 2 ? '2nd Year' : year === 3 ? '3rd Year' : '4th Year',
-          section: s.section || s.semester || "A",
+          section: s.programName || "UNASSIGNED", // Use programName as section identifier
+          programName: s.programName || "UNASSIGNED",
         };
       }),
     });
@@ -109,9 +120,9 @@ export const getFacultyAssignments = async (req, res) => {
     const students = await StudentDetails.find({ 
       facultyid: facultyId,
       collegeId,
-      dept: department
+      dept: department // Filter by HOD's department
     })
-      .select("studentid section semester")
+      .select("studentid programName semester")
       .lean();
 
     // Get sections from faculty's sectionsAssigned
@@ -124,7 +135,8 @@ export const getFacultyAssignments = async (req, res) => {
         student_id: s.studentid,
         faculty_id: facultyId, // Ensure faculty_id is included
         facultyid: facultyId, // Also include as facultyid for consistency
-        section: s.section || s.semester,
+        section: s.programName || "UNASSIGNED", // Use programName as section
+        programName: s.programName || "UNASSIGNED",
       })),
       assignedSections: assignedSections,
       sectionDetails: faculty.sectionsAssigned || [],
@@ -151,14 +163,11 @@ export const assignFacultyToSection = async (req, res) => {
       return res.status(400).json({ message: "Department information is missing" });
     }
 
-    // Get all students in the specified section within HOD's department
+    // Get all students in the specified section (programName) within HOD's department
     const students = await StudentDetails.find({
       collegeId,
-      dept: department,
-      $or: [
-        { section: section },
-        { semester: section }
-      ]
+      dept: department, // Filter by HOD's department
+      programName: section // Use programName as section identifier
     }).select("studentid");
 
     if (students.length === 0) {
@@ -176,15 +185,12 @@ export const assignFacultyToSection = async (req, res) => {
       return res.status(404).json({ message: "Faculty not found in your department" });
     }
 
-    // Update students' facultyid field
+    // Update students' facultyid field (using programName as section)
     const updateResult = await StudentDetails.updateMany(
       {
         collegeId,
-        dept: department,
-        $or: [
-          { section: section },
-          { semester: section }
-        ]
+        dept: department, // Filter by HOD's department
+        programName: section // Use programName as section identifier
       },
       {
         $set: { facultyid: facultyId }
@@ -215,12 +221,76 @@ export const assignFacultyToSection = async (req, res) => {
 
     await faculty.save();
 
+    // Emit real-time updates
+    try {
+      const studentIds = students.map(s => s.studentid);
+      
+      // Notify faculty via socket
+      emitUserNotification(facultyId, {
+        type: 'faculty_assigned',
+        title: 'New Section Assignment',
+        message: `You have been assigned to section ${section} with ${updateResult.modifiedCount} students`,
+        data: { section, studentsCount: updateResult.modifiedCount }
+      });
+      
+      // FCM push notification to faculty
+      try {
+        await sendNotificationToFaculty(
+          facultyId,
+          "New Section Assignment 📚",
+          `You have been assigned to section ${section} with ${updateResult.modifiedCount} students`,
+          {
+            type: "faculty_assigned",
+            section: section,
+            studentsCount: updateResult.modifiedCount,
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error(`Error sending push notification to faculty ${facultyId}:`, notifError);
+      }
+      
+      // Update faculty stats
+      const facultyStats = await calculateFacultyStats(facultyId);
+      emitFacultyStatsUpdate(facultyId, facultyStats);
+      
+      // Notify all affected students via socket
+      emitToUsersIfConnected(studentIds, 'faculty_assigned', {
+        type: 'faculty_assigned',
+        message: `Your faculty has been updated`,
+        facultyId,
+        section
+      });
+      
+      // FCM push notifications to students
+      try {
+        await sendNotificationsToStudents(
+          studentIds,
+          "Faculty Assignment Updated 👨‍🏫",
+          `Your faculty mentor has been updated for section ${section}`,
+          {
+            type: "faculty_assigned",
+            facultyId: facultyId,
+            section: section,
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error('Error sending push notifications to students:', notifError);
+      }
+      
+      // Update HOD dashboard stats
+      emitHODUpdate(req.user.hodId, 'stats', { refresh: true });
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
+    }
+
     return res.status(200).json({
       success: true,
       message: `Successfully assigned faculty to ${updateResult.modifiedCount} students in section ${section}`,
       data: {
-        facultyId: facultyId, // Include facultyId
-        facultyid: facultyId, // Also include as facultyid for consistency
+        facultyId: facultyId,
+        facultyid: facultyId,
         section,
         assignmentType: assignmentType || "Mentor",
         notes: notes || null,
@@ -260,23 +330,15 @@ export const getFacultySections = async (req, res) => {
     // Return sections from faculty's sectionsAssigned array
     const assignedSections = faculty.sectionsAssigned || [];
 
-    // Also get sections from students for verification
-    const studentSections = await StudentDetails.distinct("section", {
+    // Also get sections from students for verification (using programName)
+    const studentSections = await StudentDetails.distinct("programName", {
       facultyid: facultyId,
       collegeId,
-      dept: department,
-      section: { $exists: true, $ne: null }
+      dept: department, // Filter by HOD's department
+      programName: { $exists: true, $ne: null }
     });
 
-    const semesterSections = await StudentDetails.distinct("semester", {
-      facultyid: facultyId,
-      collegeId,
-      dept: department,
-      section: { $exists: false },
-      semester: { $exists: true, $ne: null }
-    });
-
-    const allStudentSections = [...new Set([...studentSections, ...semesterSections])];
+    const allStudentSections = studentSections.filter(s => s); // Remove null/undefined
 
     return res.status(200).json({
       success: true,
@@ -337,16 +399,13 @@ export const removeFacultyAssignment = async (req, res) => {
     faculty.sectionsAssigned.splice(assignmentIndex, 1);
     await faculty.save();
 
-    // Remove facultyid from students in this section
+    // Remove facultyid from students in this section (using programName as section)
     const updateResult = await StudentDetails.updateMany(
       {
         collegeId,
-        dept: department,
+        dept: department, // Filter by HOD's department
         facultyid: facultyId,
-        $or: [
-          { section: section },
-          { semester: section }
-        ]
+        programName: section // Use programName as section identifier
       },
       {
         $unset: { facultyid: "" }

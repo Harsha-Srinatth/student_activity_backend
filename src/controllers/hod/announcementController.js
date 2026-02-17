@@ -1,6 +1,9 @@
 import Announcement from "../../models/shared/announcementSchema.js";
 import HOD from "../../models/Hod/hodDetails.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import { emitAnnouncementUpdate } from "../../utils/socketEmitter.js";
+import { sendNotificationsToStudents, sendNotificationToHOD, sendBatchNotifications } from "../../utils/firebaseNotification.js";
 
 /**
  * Create a new announcement
@@ -55,7 +58,7 @@ export const createAnnouncement = async (req, res) => {
       priority: priority || "medium",
       createdBy: {
         hodId: hodId,
-        adminName: hod.fullname || "HOD",
+        creatorRole: "hod",
       },
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       isActive: true,
@@ -65,20 +68,141 @@ export const createAnnouncement = async (req, res) => {
     await announcement.save();
 
     // Emit real-time update via Socket.IO
-    emitAnnouncementUpdate(
-      targetAudienceArray && targetAudienceArray.length === 1 ? targetAudienceArray[0] : null,
-      {
+    // Always emit to HOD, and also to target audience
+    const rolesToEmit = targetAudienceArray && targetAudienceArray.length === 1 
+      ? [targetAudienceArray[0], "hod"] 
+      : null; // null means emit to all
+    
+    console.log("📡 [SOCKET] Emitting announcement update:", { 
+      rolesToEmit, 
+      announcementId: announcement._id, 
+      title: announcement.title 
+    });
+    
+    // Prepare full announcement data for socket emission
+    const announcementData = {
+      _id: announcement._id,
+      title: announcement.title,
+      content: announcement.content,
+      priority: announcement.priority,
+      image: announcement.image,
+      targetAudience: announcement.targetAudience,
+      createdAt: announcement.createdAt,
+      updatedAt: announcement.updatedAt,
+      expiresAt: announcement.expiresAt,
+      isActive: announcement.isActive,
+      createdBy: announcement.createdBy,
+    };
+
+    if (rolesToEmit) {
+      // Emit to specific roles
+      rolesToEmit.forEach(role => {
+        emitAnnouncementUpdate(role, {
+          type: "new",
+          announcement: announcementData,
+        });
+      });
+    } else {
+      // Emit to all roles
+      emitAnnouncementUpdate(null, {
         type: "new",
-        announcement: {
-          _id: announcement._id,
-          title: announcement.title,
-          content: announcement.content,
-          priority: announcement.priority,
-          image: announcement.image,
-          createdAt: announcement.createdAt,
-        },
+        announcement: announcementData,
+      });
+    }
+
+    // Send push notifications based on target audience
+    try {
+      const shouldNotifyStudents = targetAudienceArray.includes("student") || targetAudienceArray.includes("both");
+      const shouldNotifyFaculty = targetAudienceArray.includes("faculty") || targetAudienceArray.includes("both");
+
+      // Send notifications to students
+      if (shouldNotifyStudents) {
+        try {
+          const students = await StudentDetails.find({ collegeId })
+            .select("studentid fcmToken")
+            .lean();
+          
+          const studentTokens = students
+            .map(s => s.fcmToken)
+            .filter(token => token && token.trim() !== "");
+
+          if (studentTokens.length > 0) {
+            console.log(`🔔 [HOD Announcement] Sending notifications to ${studentTokens.length} students`);
+            await sendBatchNotifications(
+              studentTokens,
+              `New Announcement: ${title}`,
+              content.length > 100 ? content.substring(0, 100) + "..." : content,
+              {
+                type: "announcement",
+                announcementId: announcement._id.toString(),
+                priority: priority || "medium",
+                timestamp: new Date().toISOString(),
+              }
+            );
+            console.log(`✅ [HOD Announcement] Notification sent to ${studentTokens.length} students`);
+          } else {
+            console.log(`⚠️ [HOD Announcement] No student FCM tokens found to send notifications`);
+          }
+        } catch (studentNotifError) {
+          console.error("Error sending notifications to students:", studentNotifError);
+        }
       }
-    );
+
+      // Send notifications to faculty
+      if (shouldNotifyFaculty) {
+        try {
+          const faculty = await FacultyDetails.find({ collegeId })
+            .select("facultyid fcmToken")
+            .lean();
+          
+          const facultyTokens = faculty
+            .map(f => f.fcmToken)
+            .filter(token => token && token.trim() !== "");
+
+          if (facultyTokens.length > 0) {
+            console.log(`🔔 [HOD Announcement] Sending notifications to ${facultyTokens.length} faculty`);
+            await sendBatchNotifications(
+              facultyTokens,
+              `New Announcement: ${title}`,
+              content.length > 100 ? content.substring(0, 100) + "..." : content,
+              {
+                type: "announcement",
+                announcementId: announcement._id.toString(),
+                priority: priority || "medium",
+                timestamp: new Date().toISOString(),
+              }
+            );
+            console.log(`✅ [HOD Announcement] Notification sent to ${facultyTokens.length} faculty`);
+          } else {
+            console.log(`⚠️ [HOD Announcement] No faculty FCM tokens found to send notifications`);
+          }
+        } catch (facultyNotifError) {
+          console.error("Error sending notifications to faculty:", facultyNotifError);
+        }
+      }
+
+      // Send confirmation notification to HOD
+      try {
+        console.log(`🔔 [HOD Announcement] Sending confirmation notification to HOD: ${hodId}`);
+        await sendNotificationToHOD(
+          hodId,
+          "Announcement Created ✓",
+          `Your announcement "${title}" has been published successfully to ${targetAudienceArray.join(", ")}`,
+          {
+            type: "announcement_created",
+            announcementId: announcement._id.toString(),
+            targetAudience: targetAudienceArray.join(","),
+            timestamp: new Date().toISOString(),
+          }
+        );
+        console.log(`✅ [HOD Announcement] Confirmation notification sent to HOD`);
+      } catch (hodNotifError) {
+        console.error("❌ [HOD Announcement] Error sending notification to HOD:", hodNotifError);
+      }
+    } catch (notifError) {
+      console.error("Error sending push notifications:", notifError);
+      // Don't fail the request if notifications fail
+    }
 
     return res.status(201).json({
       success: true,
@@ -229,21 +353,28 @@ export const updateAnnouncement = async (req, res) => {
 
     await announcement.save();
 
-    // Emit real-time update
+    // Emit real-time update with full announcement data
+    const announcementData = {
+      _id: announcement._id,
+      title: announcement.title,
+      content: announcement.content,
+      priority: announcement.priority,
+      image: announcement.image,
+      targetAudience: announcement.targetAudience,
+      createdAt: announcement.createdAt,
+      updatedAt: announcement.updatedAt,
+      expiresAt: announcement.expiresAt,
+      isActive: announcement.isActive,
+      createdBy: announcement.createdBy,
+    };
+    
     emitAnnouncementUpdate(
       announcement.targetAudience && announcement.targetAudience.length === 1 
         ? announcement.targetAudience[0] 
         : null,
       {
         type: "update",
-        announcement: {
-          _id: announcement._id,
-          title: announcement.title,
-          content: announcement.content,
-          priority: announcement.priority,
-          image: announcement.image,
-          updatedAt: announcement.updatedAt,
-        },
+        announcement: announcementData,
       }
     );
 

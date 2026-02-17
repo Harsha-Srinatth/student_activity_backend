@@ -21,10 +21,17 @@ import {
   getFacultyLeaveStats,
   getFacultyProfile
 } from '../controllers/faculty/leaveRequests.js';
+import { searchFaculty } from "../controllers/shared/facultyController.js";
+import { createClubAnnouncement, getMyClubs, updateClubAnnouncement, deleteClubAnnouncement } from "../controllers/shared/clubAnnouncementController.js";
+import uploadAnnouncement from "../middlewares/uploadAnnouncement.js";
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
+// Public routes (must come before authentication middleware)
+// Faculty search for registration purposes (no auth required)
+router.get("/search", searchFaculty);
+
+// Apply authentication middleware to all routes below
 router.use(checkauth);
 
 // Debug middleware to log all requests to faculty routes
@@ -51,9 +58,9 @@ router.get("/metrics", requireRole("faculty"), getFacultyMetrics);
 // Student Management
 router.get("/students", requireRole("faculty"), getStudentsByFaculty);
 router.get("/students/count", requireRole("faculty"), getStudentCountByFaculty);
+router.get("/students/search", requireRole("faculty"), searchStudents);
 router.get("/student-details/:studentid", requireRole("faculty"), getStudentDetails);
 router.get("/student/:studentid", requireRole("faculty"), getStudentDetailsFrom);
-router.get("/search", requireRole("faculty"), searchStudents);
 router.get("/all", getAllFaculty);
 
 // Approval Management
@@ -85,6 +92,10 @@ router.put("/leave-requests/:studentid/:requestId", requireRole("faculty"), proc
 
 // Announcements
 router.get("/announcements", requireRole("faculty"), getAnnouncementsForUser);
+router.get("/clubs/my", requireRole("faculty"), getMyClubs);
+router.post("/clubs/announcements", requireRole("faculty"), uploadAnnouncement.single("image"), createClubAnnouncement);
+router.put("/clubs/announcements/:id", requireRole("faculty"), uploadAnnouncement.single("image"), updateClubAnnouncement);
+router.delete("/clubs/announcements/:id", requireRole("faculty"), deleteClubAnnouncement);
 
 export default router;
 

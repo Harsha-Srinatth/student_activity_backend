@@ -1,4 +1,10 @@
 import StudentDetails from "../../models/student/studentDetails.js";
+import { 
+  emitStudentDashboardDataUpdate,
+  emitFacultyPendingApprovalsUpdate,
+  emitUserNotification
+} from "../../utils/socketEmitter.js";
+import { sendNotificationToFaculty } from "../../utils/firebaseNotification.js";
 
 // Upload certificate/workshop/club/internship/project proof
 const studentDocUpload = async (req, res) => {
@@ -122,6 +128,117 @@ const studentDocUpload = async (req, res) => {
     }
 
     await student.save();
+    
+    // Emit real-time updates
+    try {
+      // Update student dashboard
+      await emitStudentDashboardDataUpdate(studentid);
+      
+      // Notify faculty if they're connected
+      if (student.facultyid) {
+        // Get updated pending approvals count for faculty
+        const students = await StudentDetails.find({ facultyid: student.facultyid })
+          .select('certifications workshops clubsJoined projects internships others studentid')
+          .lean();
+        
+        // Build pending approvals list
+        const pendingApprovals = [];
+        students.forEach(s => {
+          const normalizeStatus = (v) => !v || !v.status || v.status === 'pending' ? 'pending' : v.status;
+          [...(s.certifications || [])].forEach(c => {
+            if (normalizeStatus(c.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'certificate', 
+                description: c.title,
+                imageUrl: c.imageUrl
+              });
+            }
+          });
+          [...(s.workshops || [])].forEach(w => {
+            if (normalizeStatus(w.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'workshop', 
+                description: w.title,
+                imageUrl: w.certificateUrl || w.imageUrl
+              });
+            }
+          });
+          [...(s.clubsJoined || [])].forEach(c => {
+            if (normalizeStatus(c.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'club', 
+                description: c.title || c.clubName,
+                imageUrl: c.imageUrl
+              });
+            }
+          });
+          [...(s.projects || [])].forEach(p => {
+            if (normalizeStatus(p.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'project', 
+                description: p.title,
+                imageUrl: p.imageUrl
+              });
+            }
+          });
+          [...(s.internships || [])].forEach(i => {
+            if (normalizeStatus(i.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'internship', 
+                description: `${i.organization} - ${i.role}`,
+                imageUrl: i.imageUrl
+              });
+            }
+          });
+          [...(s.others || [])].forEach(o => {
+            if (normalizeStatus(o.verification) === 'pending') {
+              pendingApprovals.push({ 
+                studentid: s.studentid, 
+                type: 'other', 
+                description: o.title,
+                imageUrl: o.imageUrl
+              });
+            }
+          });
+        });
+        
+        emitFacultyPendingApprovalsUpdate(student.facultyid, pendingApprovals);
+        
+        // Notify faculty via socket
+        emitUserNotification(student.facultyid, {
+          type: 'new_submission',
+          title: 'New Submission',
+          message: `${student.fullname || studentid} uploaded a new ${type}`,
+          data: { studentid, type, title }
+        });
+        
+        // Send FCM push notification to faculty
+        try {
+          await sendNotificationToFaculty(
+            student.facultyid,
+            "New Achievement Submission 📝",
+            `${student.fullname || studentid} uploaded a new ${type}: ${title}`,
+            {
+              type: "new_submission",
+              studentid: studentid,
+              submissionType: type,
+              title: title,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to faculty ${student.facultyid}:`, notifError);
+        }
+      }
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
+    }
+    
     res.json({ message: `${type} uploaded successfully`, student });
   } catch (error) {
     console.error("Upload error:", error);

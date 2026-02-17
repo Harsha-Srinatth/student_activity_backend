@@ -1,5 +1,4 @@
 import express from "express";
-import { registerHOD } from "../controllers/hod/registerHOD.js";
 import { loginAsHOD } from "../controllers/hod/loginAsHOD.js";
 import {
   createAnnouncement,
@@ -20,6 +19,7 @@ import {
   getDepartmentStudents,
   getFacultyAssignments,
   assignFacultyToSection,
+  removeFacultyAssignment,
   getFacultySections,
   getHODInfo,
 } from "../controllers/hod/hodAssignmentController.js";
@@ -38,7 +38,6 @@ import {
 const router = express.Router();
 
 // Public routes
-router.post("/register", registerHOD);
 router.post("/login", loginAsHOD);
 
 // HOD Info route (requires auth but accessible for HOD)
@@ -60,6 +59,7 @@ router.get("/faculty", getDepartmentFaculty);
 router.get("/students", getDepartmentStudents);
 router.get("/assignments", getFacultyAssignments);
 router.post("/assign", assignFacultyToSection);
+router.delete("/assign", removeFacultyAssignment);
 router.get("/faculty/:facultyId/sections", getFacultySections);
 
 // Announcement routes

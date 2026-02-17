@@ -1,6 +1,9 @@
 import ClubDetail from "../../models/shared/clubSchema.js";
 import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
+import { emitUserNotification } from "../../utils/socketEmitter.js";
+import { emitHODUpdate } from "../../utils/realtimeUpdate.js";
+import { sendNotificationToFaculty, sendNotificationToStudent } from "../../utils/firebaseNotification.js";
 
 /**
  * Create a new club
@@ -95,6 +98,68 @@ export const createClub = async (req, res) => {
           }
         }
       );
+    }
+
+    // Emit real-time updates
+    try {
+      // Notify faculty coordinator if assigned
+      if (facultyCoordinator) {
+        emitUserNotification(facultyCoordinator, {
+          type: 'club_assigned',
+          title: 'Club Coordinator Assignment',
+          message: `You have been assigned as coordinator for ${clubName}`,
+          data: { clubId, clubName }
+        });
+        
+        // FCM push notification
+        try {
+          await sendNotificationToFaculty(
+            facultyCoordinator,
+            "Club Coordinator Assignment 🎯",
+            `You have been assigned as coordinator for ${clubName}`,
+            {
+              type: "club_assigned",
+              clubId: clubId,
+              clubName: clubName,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to faculty ${facultyCoordinator}:`, notifError);
+        }
+      }
+      
+      // Notify student head if assigned
+      if (studentHead) {
+        emitUserNotification(studentHead, {
+          type: 'club_head_assigned',
+          title: 'Club Head Assignment',
+          message: `You have been assigned as head of ${clubName}`,
+          data: { clubId, clubName }
+        });
+        
+        // FCM push notification
+        try {
+          await sendNotificationToStudent(
+            studentHead,
+            "Club Head Assignment 🎯",
+            `You have been assigned as head of ${clubName}`,
+            {
+              type: "club_head_assigned",
+              clubId: clubId,
+              clubName: clubName,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to student ${studentHead}:`, notifError);
+        }
+      }
+      
+      // Update HOD dashboard
+      emitHODUpdate(req.user.hodId, 'stats', { refresh: true });
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
     }
 
     return res.status(201).json({
@@ -272,6 +337,120 @@ export const updateClubAssignments = async (req, res) => {
       { $set: updateData },
       { new: true }
     ).lean();
+
+    // Emit real-time updates
+    try {
+      // Notify faculty coordinator if changed
+      if (facultyCoordinator !== undefined) {
+        if (facultyCoordinator && facultyCoordinator !== club.facultyCoordinator) {
+          emitUserNotification(facultyCoordinator, {
+            type: 'club_assigned',
+            title: 'Club Coordinator Assignment',
+            message: `You have been assigned as coordinator for ${updatedClub.clubName}`,
+            data: { clubId, clubName: updatedClub.clubName }
+          });
+          
+          // FCM push notification
+          try {
+            await sendNotificationToFaculty(
+              facultyCoordinator,
+              "Club Coordinator Assignment 🎯",
+              `You have been assigned as coordinator for ${updatedClub.clubName}`,
+              {
+                type: "club_assigned",
+                clubId: clubId,
+                clubName: updatedClub.clubName,
+                timestamp: new Date().toISOString(),
+              }
+            );
+          } catch (notifError) {
+            console.error(`Error sending push notification to faculty ${facultyCoordinator}:`, notifError);
+          }
+        }
+        if (club.facultyCoordinator && club.facultyCoordinator !== facultyCoordinator) {
+          emitUserNotification(club.facultyCoordinator, {
+            type: 'club_unassigned',
+            title: 'Club Coordinator Removed',
+            message: `You have been removed as coordinator for ${updatedClub.clubName}`,
+            data: { clubId }
+          });
+          
+          // FCM push notification
+          try {
+            await sendNotificationToFaculty(
+              club.facultyCoordinator,
+              "Club Coordinator Removed",
+              `You have been removed as coordinator for ${updatedClub.clubName}`,
+              {
+                type: "club_unassigned",
+                clubId: clubId,
+                timestamp: new Date().toISOString(),
+              }
+            );
+          } catch (notifError) {
+            console.error(`Error sending push notification to faculty ${club.facultyCoordinator}:`, notifError);
+          }
+        }
+      }
+      
+      // Notify student head if changed
+      if (studentHead !== undefined) {
+        if (studentHead && studentHead !== club.studentHead) {
+          emitUserNotification(studentHead, {
+            type: 'club_head_assigned',
+            title: 'Club Head Assignment',
+            message: `You have been assigned as head of ${updatedClub.clubName}`,
+            data: { clubId, clubName: updatedClub.clubName }
+          });
+          
+          // FCM push notification
+          try {
+            await sendNotificationToStudent(
+              studentHead,
+              "Club Head Assignment 🎯",
+              `You have been assigned as head of ${updatedClub.clubName}`,
+              {
+                type: "club_head_assigned",
+                clubId: clubId,
+                clubName: updatedClub.clubName,
+                timestamp: new Date().toISOString(),
+              }
+            );
+          } catch (notifError) {
+            console.error(`Error sending push notification to student ${studentHead}:`, notifError);
+          }
+        }
+        if (club.studentHead && club.studentHead !== studentHead) {
+          emitUserNotification(club.studentHead, {
+            type: 'club_head_unassigned',
+            title: 'Club Head Removed',
+            message: `You have been removed as head of ${updatedClub.clubName}`,
+            data: { clubId }
+          });
+          
+          // FCM push notification
+          try {
+            await sendNotificationToStudent(
+              club.studentHead,
+              "Club Head Removed",
+              `You have been removed as head of ${updatedClub.clubName}`,
+              {
+                type: "club_head_unassigned",
+                clubId: clubId,
+                timestamp: new Date().toISOString(),
+              }
+            );
+          } catch (notifError) {
+            console.error(`Error sending push notification to student ${club.studentHead}:`, notifError);
+          }
+        }
+      }
+      
+      // Update HOD dashboard
+      emitHODUpdate(req.user.hodId, 'stats', { refresh: true });
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
+    }
 
     return res.json({
       ok: true,

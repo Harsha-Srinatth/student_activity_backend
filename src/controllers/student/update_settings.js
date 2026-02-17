@@ -18,6 +18,7 @@ const updateStudentSettings = async (req, res) => {
       "programName",
       "semester",
       "facultyid",
+      "fcmToken",
     ];
     const updates = {};
     

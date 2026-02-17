@@ -80,7 +80,8 @@ const FacultySchema = new mongoose.Schema(
     username: { type: String, required: true, unique: true, index: true },
     collegeId: { type: String, required: true, index: true },
     dept: { type: String, required: true, index: true },
-    designation: { type: String, default: "Faculty" },
+    designation: { type: [String], default: ["Faculty"] },
+    subjects: { type: [String], default: [] },
 
     // Contact Information
     email: { type: String, required: true, unique: true, index: true },
@@ -103,6 +104,9 @@ const FacultySchema = new mongoose.Schema(
     // Preferences
     notificationsEnabled: { type: Boolean, default: true },
     emailNotifications: { type: Boolean, default: true },
+
+    // Firebase Cloud Messaging Token for push notifications
+    fcmToken: { type: String, default: null, index: true },
 
     // Assignment Tracking
     sectionsAssigned: { type: [SectionAssignmentSchema], default: [] },

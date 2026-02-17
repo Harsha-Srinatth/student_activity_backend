@@ -37,6 +37,7 @@ const student_Dashboard_Details = async (req, res) => {
           dept: 1,
           programName: 1,
           facultyid: 1,
+          fcmToken: 1,
           "image.url": 1,
           collegeName: {
             $let: {

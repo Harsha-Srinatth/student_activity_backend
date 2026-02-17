@@ -6,13 +6,32 @@ import FacultyDetails from "../../models/faculty/facultyDetails.js";
 export const getStudentsByFaculty = async (req, res) => {
   try {
     const facultyid = req.user.facultyid;
+    const { section, year } = req.query; // Get section (programName) and year filters
     
     if (!facultyid) {
       return res.status(400).json({ message: "Faculty ID not found in token" });
     }
 
+    // Build query filter
+    const query = { facultyid };
+    
+    // Filter by section (programName) if provided
+    if (section && section !== 'all') {
+      query.programName = section;
+    }
+    
+    // Filter by year if provided (year 1 = semesters 1-2, year 2 = semesters 3-4, etc.)
+    if (year && year !== 'all') {
+      const yearNum = parseInt(year);
+      if (!isNaN(yearNum) && yearNum >= 1 && yearNum <= 4) {
+        const minSemester = (yearNum - 1) * 2 + 1;
+        const maxSemester = yearNum * 2;
+        query.semester = { $gte: minSemester, $lte: maxSemester };
+      }
+    }
+
     // Get students with the specified faculty ID, sorted by studentid
-    const students = await StudentDetails.find({ facultyid })
+    const students = await StudentDetails.find(query)
       // include attendance so frontend can compute percentage
       .select('studentid fullname username email image programName semester dateofjoin collegeId mobileno dept attendance')
       .sort({ studentid: 1 }); // Sort by studentid in ascending order

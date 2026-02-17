@@ -210,6 +210,9 @@ const StudentDetailSchema = new mongoose.Schema(
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
     facultyid: {type: String, required: true},
+    
+    // Firebase Cloud Messaging Token for push notifications
+    fcmToken: { type: String, default: null, index: true },
 
     // Certifications
     certifications: { type: [CertificationSchema], default: [] },

@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import socketManager from "./socketManager.js";
 
 /**
  * Socket event handlers for real-time updates
@@ -22,7 +23,7 @@ export const handleSocketAuth = (socket, next) => {
     
     // Attach user info to socket
     // Handle both camelCase and lowercase field names
-    socket.userId = decoded.studentId || decoded.studentid || decoded.facultyId || decoded.facultyid || decoded.adminId || decoded.adminid;
+    socket.userId = decoded.studentId || decoded.studentid || decoded.facultyId || decoded.facultyid || decoded.hodId || decoded.hodid || decoded.adminId || decoded.adminid;
     socket.userRole = decoded.role;
     socket.user = decoded;
     
@@ -41,6 +42,11 @@ export const handleSocketAuth = (socket, next) => {
 export const handleConnection = (socket, io) => {
   console.log(`Socket connected: ${socket.id} (User: ${socket.userId}, Role: ${socket.userRole})`);
   
+  // Register socket in manager
+  if (socket.userId && socket.userRole) {
+    socketManager.registerSocket(socket.id, socket.userId, socket.userRole);
+  }
+  
   // Join user-specific room
   if (socket.userId) {
     socket.join(`user:${socket.userId}`);
@@ -57,6 +63,8 @@ export const handleConnection = (socket, io) => {
   // Handle disconnection
   socket.on('disconnect', (reason) => {
     console.log(`Socket disconnected: ${socket.id} (Reason: ${reason})`);
+    // Unregister socket from manager
+    socketManager.unregisterSocket(socket.id);
   });
   
   // Handle errors

@@ -1,4 +1,9 @@
 import StudentDetails from '../../models/student/studentDetails.js';
+import { 
+  emitStudentDashboardDataUpdate,
+  emitUserNotification
+} from '../../utils/socketEmitter.js';
+import { sendNotificationToFaculty } from '../../utils/firebaseNotification.js';
 
 /**
  * Submit a new leave request
@@ -78,6 +83,58 @@ const studentReqForLeave = async (req, res) => {
 
     // Get the newly added leave request (last one)
     const newLeaveRequest = student.leaveRequests[student.leaveRequests.length - 1];
+
+    // Emit real-time updates
+    try {
+      // Get student details to find faculty
+      const studentDetails = await StudentDetails.findOne({ studentid })
+        .select('facultyid fullname')
+        .lean();
+      
+      // Update student dashboard
+      await emitStudentDashboardDataUpdate(studentid);
+      
+      // Notify faculty if assigned
+      if (studentDetails?.facultyid) {
+        // Socket notification
+        emitUserNotification(studentDetails.facultyid, {
+          type: 'leave_request',
+          title: 'New Leave Request',
+          message: `${studentDetails.fullname || studentid} submitted a leave request`,
+          data: {
+            studentid,
+            leaveRequestId: newLeaveRequest._id,
+            leaveType: leaveType,
+            startDate,
+            endDate,
+            totalDays
+          }
+        });
+        
+        // FCM push notification
+        try {
+          await sendNotificationToFaculty(
+            studentDetails.facultyid,
+            "New Leave Request 📅",
+            `${studentDetails.fullname || studentid} submitted a ${leaveType} leave request (${totalDays} days)`,
+            {
+              type: "leave_request",
+              studentid: studentid,
+              leaveRequestId: newLeaveRequest._id.toString(),
+              leaveType: leaveType,
+              startDate: startDate,
+              endDate: endDate,
+              totalDays: totalDays,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to faculty ${studentDetails.facultyid}:`, notifError);
+        }
+      }
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
+    }
 
     res.status(201).json({
       success: true,

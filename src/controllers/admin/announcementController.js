@@ -1,6 +1,9 @@
 import Announcement from "../../models/shared/announcementSchema.js";
 import Admin from "../../models/shared/Administrator.js";
 import { emitAnnouncementUpdate } from "../../utils/socketEmitter.js";
+import { sendBatchNotifications } from "../../utils/firebaseNotification.js";
+import StudentDetails from "../../models/student/studentDetails.js";
+import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
 /**
  * Create a new announcement
@@ -54,6 +57,7 @@ export const createAnnouncement = async (req, res) => {
       createdBy: {
         adminId,
         adminName: admin.fullname || "Admin",
+        creatorRole: "admin",
       },
       expiresAt: expiresAt ? new Date(expiresAt) : null,
       isActive: true,
@@ -62,21 +66,100 @@ export const createAnnouncement = async (req, res) => {
 
     await announcement.save();
 
-    // Emit real-time update via Socket.IO
+    // Emit real-time update via Socket.IO with full announcement data
+    const announcementData = {
+      _id: announcement._id,
+      title: announcement.title,
+      content: announcement.content,
+      priority: announcement.priority,
+      image: announcement.image,
+      targetAudience: announcement.targetAudience,
+      createdAt: announcement.createdAt,
+      updatedAt: announcement.updatedAt,
+      expiresAt: announcement.expiresAt,
+      isActive: announcement.isActive,
+      createdBy: announcement.createdBy,
+    };
+    
     emitAnnouncementUpdate(
       targetAudienceArray && targetAudienceArray.length === 1 ? targetAudienceArray[0] : null,
       {
         type: "new",
-        announcement: {
-          _id: announcement._id,
-          title: announcement.title,
-          content: announcement.content,
-          priority: announcement.priority,
-          image: announcement.image,
-          createdAt: announcement.createdAt,
-        },
+        announcement: announcementData,
       }
     );
+
+    // Send push notifications based on target audience
+    try {
+      const { collegeId } = req.user;
+      const shouldNotifyStudents = targetAudienceArray.includes("student") || targetAudienceArray.includes("both");
+      const shouldNotifyFaculty = targetAudienceArray.includes("faculty") || targetAudienceArray.includes("both");
+
+      // Send notifications to students
+      if (shouldNotifyStudents) {
+        try {
+          const students = await StudentDetails.find({ collegeId })
+            .select("studentid fcmToken")
+            .lean();
+          
+          const studentTokens = students
+            .map(s => s.fcmToken)
+            .filter(token => token && token.trim() !== "");
+
+          if (studentTokens.length > 0) {
+            console.log(`🔔 [Admin Announcement] Sending notifications to ${studentTokens.length} students`);
+            await sendBatchNotifications(
+              studentTokens,
+              `New Announcement: ${title}`,
+              content.length > 100 ? content.substring(0, 100) + "..." : content,
+              {
+                type: "announcement",
+                announcementId: announcement._id.toString(),
+                priority: priority || "medium",
+                timestamp: new Date().toISOString(),
+              }
+            );
+            console.log(`✅ [Admin Announcement] Notification sent to ${studentTokens.length} students`);
+          }
+        } catch (studentNotifError) {
+          console.error("Error sending notifications to students:", studentNotifError);
+        }
+      }
+
+      // Send notifications to faculty
+      if (shouldNotifyFaculty) {
+        try {
+          const faculty = await FacultyDetails.find({ collegeId })
+            .select("facultyid fcmToken")
+            .lean();
+          
+          const facultyTokens = faculty
+            .map(f => f.fcmToken)
+            .filter(token => token && token.trim() !== "");
+
+          if (facultyTokens.length > 0) {
+            console.log(`🔔 [Admin Announcement] Sending notifications to ${facultyTokens.length} faculty`);
+            await sendBatchNotifications(
+              facultyTokens,
+              `New Announcement: ${title}`,
+              content.length > 100 ? content.substring(0, 100) + "..." : content,
+              {
+                type: "announcement",
+                announcementId: announcement._id.toString(),
+                priority: priority || "medium",
+                timestamp: new Date().toISOString(),
+              }
+            );
+            console.log(`✅ [Admin Announcement] Notification sent to ${facultyTokens.length} faculty`);
+          }
+        } catch (facultyNotifError) {
+          console.error("Error sending notifications to faculty:", facultyNotifError);
+        }
+      }
+    } catch (notifError) {
+      console.error("Error sending push notifications:", notifError);
+      // Don't fail the request if notifications fail
+    }
 
     return res.status(201).json({
       success: true,

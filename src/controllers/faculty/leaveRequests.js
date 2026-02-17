@@ -81,8 +81,10 @@ export const getAllPendingLeaveReq = async (req, res) => {
 
 import { 
   emitUserNotification,
-  emitFacultyStatsUpdate 
+  emitFacultyStatsUpdate,
+  emitStudentDashboardDataUpdate
 } from "../../utils/socketEmitter.js";
+import { sendNotificationToStudent, sendNotificationToFaculty } from "../../utils/firebaseNotification.js";
 
 // Approve/Reject leave request
 export const processLeaveReq = async (req, res) => {
@@ -148,7 +150,10 @@ export const processLeaveReq = async (req, res) => {
 
     // Emit real-time updates via Socket.IO
     try {
-      // Emit notification to student
+      // Update student dashboard (counts and approvals)
+      await emitStudentDashboardDataUpdate(studentid);
+      
+      // Emit notification to student via socket
       emitUserNotification(studentid, {
         type: 'leave_request',
         title: `Leave Request ${status === 'approved' ? 'Approved' : 'Rejected'}`,
@@ -161,6 +166,48 @@ export const processLeaveReq = async (req, res) => {
           approvalRemarks,
         },
       });
+
+      // Update faculty dashboard stats (to refresh pending leave requests count)
+      emitFacultyStatsUpdate(facultyid, { refresh: true });
+
+      // Send push notification to student
+      try {
+        await sendNotificationToStudent(
+          studentid,
+          status === 'approved' ? `Leave Request Approved ✅` : `Leave Request Rejected ❌`,
+          `Your leave request (${leaveRequest.leaveType}) has been ${status} by ${faculty.fullname}${approvalRemarks ? `. Remarks: ${approvalRemarks}` : ''}`,
+          {
+            type: "leave_request",
+            leaveRequestId: requestId,
+            status: status,
+            leaveType: leaveRequest.leaveType,
+            reviewedBy: faculty.fullname,
+            approvalRemarks: approvalRemarks || "",
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error(`Error sending push notification to student ${studentid}:`, notifError);
+      }
+
+      // Send notification to faculty about the action taken
+      // Note: student is already fetched at line 102, so student.fullname is available
+      try {
+        await sendNotificationToFaculty(
+          facultyid,
+          "Leave Request Processed ✓",
+          `You ${status} ${student.fullname}'s ${leaveRequest.leaveType} leave request`,
+          {
+            type: "leave_approval_action",
+            studentid: studentid,
+            leaveRequestId: requestId,
+            status: status,
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error(`Error sending push notification to faculty ${facultyid}:`, notifError);
+      }
     } catch (socketError) {
       // Don't fail the request if socket emit fails
       console.error('Error emitting socket update:', socketError);

@@ -29,12 +29,18 @@ coverage/
 dist/
 build/
 
-# Server files (local vs production differences)
-server.js
-
 # Temporary files
 *.tmp
 *.swp
 
 # Uploads (if you store user files locally instead of cloud like Cloudinary)
 uploads/
+
+# Firebase credentials (NEVER commit these)
+*firebase-adminsdk*.json
+college360x-firebase-adminsdk*.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!jsconfig.json

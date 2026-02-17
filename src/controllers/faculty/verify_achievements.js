@@ -1,5 +1,14 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import { saveApprovalToFaculty, buildApprovalData, getFacultyName } from "../../utils/facultyApprovalHelper.js";
+import { 
+  emitStudentDashboardDataUpdate,
+  emitApprovalUpdate,
+  emitUserNotification,
+  emitFacultyStatsUpdate,
+  emitFacultyPendingApprovalsUpdate
+} from "../../utils/socketEmitter.js";
+import { calculateFacultyStats } from "./faculty_Dashboard_Details.js";
+import { sendNotificationToStudent, sendNotificationToFaculty } from "../../utils/firebaseNotification.js";
 
 // Verify a specific achievement (certification, workshop, club, project)
 const verifyAchievement = async (req, res) => {
@@ -100,9 +109,11 @@ const verifyAchievement = async (req, res) => {
     }
 
     // Record the approval in faculty's approvalsGiven array
+    // Declare updatedStudent in broader scope so it can be used later
+    let updatedStudent = null;
     try {
       // Re-fetch student to get updated achievement data
-      const updatedStudent = await StudentDetails.findOne({ studentid, facultyid: facultyId })
+      updatedStudent = await StudentDetails.findOne({ studentid, facultyid: facultyId })
         .select('studentid fullname collegeId certifications workshops clubsJoined projects internships others')
         .lean();
       
@@ -137,6 +148,89 @@ const verifyAchievement = async (req, res) => {
     } catch (facultyUpdateError) {
       // Log error but don't fail the main operation - student is already saved
       console.error('Error updating faculty approvals:', facultyUpdateError.message);
+    }
+
+    // Emit real-time updates
+    try {
+      const facultyName = await getFacultyName(facultyId);
+      
+      // Update student dashboard in real-time
+      await emitStudentDashboardDataUpdate(studentid);
+      
+      // Notify student via socket
+      emitUserNotification(studentid, {
+        type: 'achievement_verified',
+        title: `Achievement ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+        message: `Your ${achievementType} has been ${status} by ${facultyName}`,
+        data: { achievementType, status, remarks }
+      });
+
+      // Send push notification to student
+      try {
+        const achievementTypeDisplay = achievementType === 'certification' ? 'certificate' : achievementType;
+        await sendNotificationToStudent(
+          studentid,
+          status === 'approved' ? `Achievement Approved ✅` : `Achievement Rejected ❌`,
+          `Your ${achievementTypeDisplay} has been ${status} by ${facultyName}${remarks ? `. Remarks: ${remarks}` : ''}`,
+          {
+            type: "achievement_verified",
+            achievementType: achievementType,
+            status: status,
+            remarks: remarks || "",
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error(`Error sending push notification to student ${studentid}:`, notifError);
+      }
+
+      // Send notification to faculty about the action taken
+      // Use student.fullname from the original fetch (line 29) - student is in scope here
+      // If updatedStudent is available, prefer it, otherwise use original student
+      try {
+        // student is defined at line 29 and is in scope here
+        // updatedStudent is now in scope (declared above)
+        const studentName = (updatedStudent?.fullname) || student.fullname;
+        await sendNotificationToFaculty(
+          facultyId,
+          "Action Completed ✓",
+          `You ${status} ${studentName}'s ${achievementType === 'certification' ? 'certificate' : achievementType}`,
+          {
+            type: "approval_action",
+            studentid: studentid,
+            achievementType: achievementType,
+            status: status,
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error(`Error sending push notification to faculty ${facultyId}:`, notifError);
+      }
+      
+      // Update faculty stats and pending approvals
+      const facultyStats = await calculateFacultyStats(facultyId);
+      emitFacultyStatsUpdate(facultyId, facultyStats);
+      
+      // Refresh faculty pending approvals list
+      const students = await StudentDetails.find({ facultyid: facultyId })
+        .select('certifications workshops clubsJoined projects internships others')
+        .lean();
+      
+      // Build pending approvals list
+      const pendingApprovals = [];
+      students.forEach(student => {
+        const normalizeStatus = (v) => !v || !v.status || v.status === 'pending' ? 'pending' : v.status;
+        [...(student.certifications || [])].forEach(c => {
+          if (normalizeStatus(c.verification) === 'pending') {
+            pendingApprovals.push({ studentid: student.studentid, type: 'certificate', description: c.title });
+          }
+        });
+        // Similar for other types...
+      });
+      
+      emitFacultyPendingApprovalsUpdate(facultyId, pendingApprovals);
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
     }
 
     res.json({

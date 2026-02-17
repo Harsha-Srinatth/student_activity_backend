@@ -54,6 +54,13 @@ const HODSchema = new mongoose.Schema(
 
     lastLogin: {
       type: Date
+    },
+
+    // Firebase Cloud Messaging Token for push notifications
+    fcmToken: {
+      type: String,
+      default: null,
+      index: true
     }
   },
   { timestamps: true }

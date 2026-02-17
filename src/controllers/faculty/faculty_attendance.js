@@ -1,5 +1,6 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import { emitAttendanceUpdate, emitStudentDashboardDataUpdate } from "../../utils/socketEmitter.js";
+import { sendNotificationsToStudents } from "../../utils/firebaseNotification.js";
 
 export const submitAttendance = async (req, res) => {
   try {
@@ -73,6 +74,23 @@ export const submitAttendance = async (req, res) => {
       } catch (error) {
         // Don't fail the request if dashboard update fails
         console.error('Error emitting dashboard updates:', error.message);
+      }
+      
+      // Send FCM push notifications to affected students
+      try {
+        await sendNotificationsToStudents(
+          updatedStudentIds,
+          "Attendance Updated 📊",
+          `Your attendance for period ${period} has been marked`,
+          {
+            type: "attendance_updated",
+            date: attendanceDate.toISOString(),
+            period: period.toString(),
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (notifError) {
+        console.error('Error sending attendance notifications:', notifError);
       }
     }
     

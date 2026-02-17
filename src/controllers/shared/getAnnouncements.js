@@ -1,4 +1,5 @@
 import Announcement from "../../models/shared/announcementSchema.js";
+import ClubDetail from "../../models/shared/clubSchema.js";
 
 /**
  * Get announcements for students/faculty based on their role and collegeId
@@ -56,14 +57,46 @@ export const getAnnouncementsForUser = async (req, res) => {
     const announcements = await Announcement.find(finalQuery)
       .sort({ createdAt: -1 })
       .limit(50)
-      .select("title content priority createdAt targetAudience expiresAt isActive image");
+      .select("title content priority createdAt targetAudience expiresAt isActive image clubId targetYears eventDate createdBy")
+      .lean();
 
-    console.log(`Found ${announcements.length} announcements matching query`);
+    // Get unique clubIds from announcements
+    const clubIds = [...new Set(announcements.filter(a => a.clubId).map(a => a.clubId))];
+    
+    // Batch fetch all clubs at once (optimized)
+    const clubsMap = {};
+    if (clubIds.length > 0) {
+      const clubs = await ClubDetail.find({ clubId: { $in: clubIds } })
+        .select("clubId clubName imageUrl")
+        .lean();
+      
+      // Create a map for O(1) lookup
+      clubs.forEach(club => {
+        clubsMap[club.clubId] = {
+          clubName: club.clubName,
+          clubImage: club.imageUrl,
+        };
+      });
+    }
+
+    // Map announcements with club details
+    const announcementsWithClubDetails = announcements.map((announcement) => {
+      if (announcement.clubId && clubsMap[announcement.clubId]) {
+        return {
+          ...announcement,
+          clubName: clubsMap[announcement.clubId].clubName,
+          clubImage: clubsMap[announcement.clubId].clubImage,
+        };
+      }
+      return announcement;
+    });
+
+    console.log(`Found ${announcementsWithClubDetails.length} announcements matching query`);
     console.log("=".repeat(50));
 
     return res.status(200).json({
       success: true,
-      data: announcements,
+      data: announcementsWithClubDetails,
     });
   } catch (error) {
     console.error("Get announcements for user error:", error);

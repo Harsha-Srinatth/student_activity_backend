@@ -1,153 +1,101 @@
-import { emitToUser, emitToRole, emitDashboardUpdate, emitNotification, emitAttendanceUpdateToStudents } from '../socket/socketHandlers.js';
+import { emitToUser, emitAttendanceUpdateToStudents } from '../socket/socketHandlers.js';
+import { 
+  emitStudentUpdate, 
+  emitFacultyUpdate, 
+  emitHODUpdate, 
+  emitNotification,
+  emitToUsersIfConnected,
+  emitToRoleIfConnected
+} from './realtimeUpdate.js';
 import StudentDetails from '../models/student/studentDetails.js';
 
 /**
- * Helper functions to emit socket events from controllers
- * Use these functions in your controllers to send real-time updates
+ * Unified Socket Emitter - Uses real-time update system
+ * Only emits to connected users, reducing unnecessary network traffic
  */
 
 /**
- * Emit student dashboard update
+ * Emit student dashboard update (uses new system)
  */
 export const emitStudentDashboardUpdate = (studentId, updateType, data) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  emitDashboardUpdate(global.io, studentId, 'student', updateType, data);
+  emitStudentUpdate(studentId, updateType, data);
 };
 
 /**
- * Emit faculty dashboard update
+ * Emit faculty dashboard update (uses new system)
  */
 export const emitFacultyDashboardUpdate = (facultyId, updateType, data) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
+  emitFacultyUpdate(facultyId, updateType, data);
+};
 
-  emitDashboardUpdate(global.io, facultyId, 'faculty', updateType, data);
+/**
+ * Emit HOD dashboard update (new)
+ */
+export const emitHODDashboardUpdate = (hodId, updateType, data) => {
+  emitHODUpdate(hodId, updateType, data);
 };
 
 /**
  * Emit approval update to student
- * Optimized to send only once
  */
 export const emitApprovalUpdate = (studentId, approvalData) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  // Send combined update in one event instead of multiple
-  emitToUser(global.io, studentId, 'dashboard:approvals', approvalData);
+  emitStudentUpdate(studentId, 'approvals', approvalData);
 };
 
 /**
  * Emit counts update to student
- * Optimized to send only once
  */
 export const emitStudentCountsUpdate = (studentId, counts) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  console.log(`📤 Emitting counts update to student ${studentId}:`, counts);
-  console.log(`📤 Emitting to room: user:${studentId}`);
-  
-  // Send only counts update (single event)
-  emitToUser(global.io, studentId, 'dashboard:counts', counts);
-  
-  // Also log which rooms exist (for debugging)
-  const rooms = global.io.sockets.adapter.rooms;
-  const targetRoom = `user:${studentId}`;
-  if (rooms.has(targetRoom)) {
-    const room = rooms.get(targetRoom);
-    console.log(`✅ Room ${targetRoom} exists with ${room.size} socket(s)`);
-  } else {
-    console.warn(`⚠️ Room ${targetRoom} does not exist - student may not be connected`);
-  }
+  emitStudentUpdate(studentId, 'counts', counts);
 };
 
 /**
  * Emit stats update to faculty
- * Optimized to send only once
  */
 export const emitFacultyStatsUpdate = (facultyId, stats) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  console.log(`📤 Emitting faculty stats update to faculty ${facultyId}:`, stats);
-  // Send stats update (single event)
-  emitToUser(global.io, facultyId, 'dashboard:stats', stats);
-  
-  // Also log which rooms exist (for debugging)
-  const rooms = global.io.sockets.adapter.rooms;
-  const targetRoom = `user:${facultyId}`;
-  if (rooms.has(targetRoom)) {
-    const room = rooms.get(targetRoom);
-    console.log(`✅ Room ${targetRoom} exists with ${room.size} socket(s)`);
-  } else {
-    console.warn(`⚠️ Room ${targetRoom} does not exist - faculty may not be connected`);
-  }
+  emitFacultyUpdate(facultyId, 'stats', stats);
 };
 
 /**
  * Emit pending approvals update to faculty
- * Optimized to send only once
  */
 export const emitFacultyPendingApprovalsUpdate = (facultyId, pendingApprovals) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  // Send only pending approvals update (single event)
-  emitToUser(global.io, facultyId, 'dashboard:pendingApprovals', pendingApprovals);
+  emitFacultyUpdate(facultyId, 'pendingApprovals', pendingApprovals);
 };
 
 /**
  * Emit notification to user
  */
 export const emitUserNotification = (userId, notification) => {
-  if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
-
-  emitNotification(global.io, userId, {
-    ...notification,
-    id: notification.id || Date.now().toString(),
-    timestamp: notification.timestamp || Date.now(),
-  });
+  emitNotification(userId, notification);
 };
 
 /**
- * Emit announcement update
+ * Emit announcement update to role(s)
  */
 export const emitAnnouncementUpdate = (role, announcementData) => {
   if (!global.io) {
-    console.warn('Socket.IO not initialized, skipping emit');
+    console.warn('⚠️ [SOCKET] Socket.IO not initialized, skipping emit');
     return;
   }
 
+  console.log(`📡 [SOCKET] Emitting announcement update to role: ${role || 'all'}`, {
+    type: announcementData?.type,
+    announcementId: announcementData?.announcement?._id || announcementData?.announcementId
+  });
+
   if (role) {
-    emitToRole(global.io, role, 'dashboard:announcements', announcementData);
+    emitToRoleIfConnected(global.io, role, 'dashboard:announcements', announcementData);
   } else {
-    // Emit to all if no role specified
-    emitToRole(global.io, 'student', 'dashboard:announcements', announcementData);
-    emitToRole(global.io, 'faculty', 'dashboard:announcements', announcementData);
+    // Emit to all roles if no role specified
+    emitToRoleIfConnected(global.io, 'student', 'dashboard:announcements', announcementData);
+    emitToRoleIfConnected(global.io, 'faculty', 'dashboard:announcements', announcementData);
+    emitToRoleIfConnected(global.io, 'hod', 'dashboard:announcements', announcementData);
   }
 };
 
 /**
  * Emit attendance update to specific students
- * @param {string|string[]} studentIds - Single student ID or array of student IDs
- * @param {Object} attendanceData - Attendance data to send (should include date, period, present status, etc.)
  */
 export const emitAttendanceUpdate = (studentIds, attendanceData) => {
   if (!global.io) {
@@ -155,7 +103,8 @@ export const emitAttendanceUpdate = (studentIds, attendanceData) => {
     return;
   }
 
-  emitAttendanceUpdateToStudents(global.io, studentIds, attendanceData);
+  const studentIdArray = Array.isArray(studentIds) ? studentIds : [studentIds];
+  emitToUsersIfConnected(studentIdArray, 'attendance:students', attendanceData);
 };
 
 /**

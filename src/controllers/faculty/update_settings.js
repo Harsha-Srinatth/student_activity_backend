@@ -15,6 +15,7 @@ const updateFacultySettings = async (req, res) => {
       "collegeId",
       "notificationsEnabled",
       "emailNotifications",
+      "fcmToken",
     ];
     const updates = {};
     for (const key of allowedFields) {
