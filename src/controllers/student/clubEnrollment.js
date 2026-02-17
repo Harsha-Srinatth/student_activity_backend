@@ -1,5 +1,10 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import ClubDetail from "../../models/shared/clubSchema.js";
+import { 
+  emitStudentDashboardDataUpdate,
+  emitUserNotification
+} from "../../utils/socketEmitter.js";
+import { sendNotificationToFaculty } from "../../utils/firebaseNotification.js";
 
 /**
  * GET all clubs joined for logged in student
@@ -96,6 +101,46 @@ const enrollInClub = async (req, res) => {
 
     // Get the newly added club (last one)
     const newClub = student.clubEnrollments[student.clubEnrollments.length - 1];
+
+    // Emit real-time updates
+    try {
+      // Update student dashboard
+      await emitStudentDashboardDataUpdate(studentid);
+      
+      // Get club details for notification
+      const club = await ClubDetail.findOne({ clubId }).select('clubName facultyCoordinator').lean();
+      
+      // Notify faculty coordinator if exists
+      if (club?.facultyCoordinator) {
+        // Socket notification
+        emitUserNotification(club.facultyCoordinator, {
+          type: 'club_enrollment',
+          title: 'New Club Enrollment',
+          message: `Student ${studentid} enrolled in ${club.clubName || clubId}`,
+          data: { studentid, clubId, clubName: club.clubName }
+        });
+        
+        // FCM push notification
+        try {
+          await sendNotificationToFaculty(
+            club.facultyCoordinator,
+            "New Club Enrollment 🎯",
+            `Student ${studentid} enrolled in ${club.clubName || clubId}`,
+            {
+              type: "club_enrollment",
+              studentid: studentid,
+              clubId: clubId,
+              clubName: club.clubName || clubId,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to faculty ${club.facultyCoordinator}:`, notifError);
+        }
+      }
+    } catch (socketError) {
+      console.error('Error emitting real-time updates:', socketError);
+    }
 
     res.json({ 
       ok: true, 

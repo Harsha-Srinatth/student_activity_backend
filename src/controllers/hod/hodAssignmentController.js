@@ -14,7 +14,7 @@ export const getDepartmentFaculty = async (req, res) => {
       collegeId,
       dept: department 
     })
-      .select("facultyid fullname email dept designation mobile sectionsAssigned")
+      .select("facultyid fullname email dept designation mobile sectionsAssigned subjects")
       .sort("fullname")
       .lean();
 
@@ -29,6 +29,7 @@ export const getDepartmentFaculty = async (req, res) => {
         department_id: f.dept,
         designation: f.designation || null,
         phone: f.mobile || null,
+        subjects: f.subjects || [], // Include subjects array
         sectionsAssigned: f.sectionsAssigned || [], // Include assigned sections
         assignedSectionsCount: (f.sectionsAssigned || []).length,
       })),
@@ -293,6 +294,76 @@ export const getFacultySections = async (req, res) => {
     });
   } catch (error) {
     console.error("Get faculty sections error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Remove faculty assignment from a section
+ */
+export const removeFacultyAssignment = async (req, res) => {
+  try {
+    const { facultyId, section } = req.body;
+    const { collegeId, department } = req.user;
+
+    if (!facultyId || !section) {
+      return res.status(400).json({ message: "Faculty ID and section are required" });
+    }
+
+    if (!department) {
+      return res.status(400).json({ message: "Department information is missing" });
+    }
+
+    // Verify faculty exists and belongs to the same department
+    const faculty = await FacultyDetails.findOne({ 
+      facultyid: facultyId,
+      collegeId,
+      dept: department 
+    });
+
+    if (!faculty) {
+      return res.status(404).json({ message: "Faculty not found in your department" });
+    }
+
+    // Remove assignment from faculty's sectionsAssigned array
+    const assignmentIndex = faculty.sectionsAssigned.findIndex(
+      (assignment) => assignment.section === section
+    );
+
+    if (assignmentIndex === -1) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    faculty.sectionsAssigned.splice(assignmentIndex, 1);
+    await faculty.save();
+
+    // Remove facultyid from students in this section
+    const updateResult = await StudentDetails.updateMany(
+      {
+        collegeId,
+        dept: department,
+        facultyid: facultyId,
+        $or: [
+          { section: section },
+          { semester: section }
+        ]
+      },
+      {
+        $unset: { facultyid: "" }
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully removed faculty assignment from section ${section}`,
+      data: {
+        facultyId: facultyId,
+        section,
+        studentsUpdated: updateResult.modifiedCount,
+      },
+    });
+  } catch (error) {
+    console.error("Remove faculty assignment error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

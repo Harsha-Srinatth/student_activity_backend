@@ -608,20 +608,17 @@ const bulkApproval = async (req, res) => {
 
     // Emit real-time updates via Socket.IO
     try {
-      // Calculate ALL updated counts (matching the structure from student_Dash.js)
-      // Use refreshed student data if available
+      // Use centralized function to calculate and emit dashboard updates
+      // This avoids code duplication and ensures consistency
+      await emitStudentDashboardDataUpdate(studentid, { [studentid]: studentForCounts });
+      
+      // Calculate counts for approval update notification
       const certs = studentForCounts.certifications || [];
       const workshops = studentForCounts.workshops || [];
       const clubs = studentForCounts.clubsJoined || [];
       const projects = studentForCounts.projects || [];
       const internships = studentForCounts.internships || [];
       const others = studentForCounts.others || [];
-
-      const certificationsCount = certs.filter(c => c.verification?.status === 'approved').length;
-      const workshopsCount = workshops.filter(w => w.verification?.status === 'approved').length;
-      const clubsJoinedCount = clubs.filter(c => c.verification?.status === 'approved').length;
-      const projectsCount = projects.filter(p => p.verification?.status === 'approved').length;
-      const hackathonsCount = 0; // Add if hackathons are tracked separately
       
       const pendingCount = certs.filter(c => c.verification?.status === 'pending').length +
                           workshops.filter(w => w.verification?.status === 'pending').length +
@@ -643,20 +640,6 @@ const bulkApproval = async (req, res) => {
                            projects.filter(p => p.verification?.status === 'rejected').length +
                            internships.filter(i => i.verification?.status === 'rejected').length +
                            others.filter(o => o.verification?.status === 'rejected').length;
-
-      const countsToEmit = {
-        certificationsCount,
-        workshopsCount,
-        clubsJoinedCount,
-        projectsCount,
-        hackathonsCount,
-        pendingApprovalsCount: pendingCount,
-        approvedCount,
-        rejectedCount,
-        pendingCount,
-      };
-      // Emit ALL counts update (matching frontend expectations)
-      emitStudentCountsUpdate(studentid, countsToEmit);
       
       // Emit approval update notification
       emitApprovalUpdate(studentid, {
