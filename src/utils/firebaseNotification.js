@@ -2,6 +2,7 @@ import admin from "firebase-admin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,26 +11,72 @@ const __dirname = dirname(__filename);
 let firebaseAdminInitialized = false;
 
 try {
-  // Path to the service account key file
-  // __dirname points to student-backend/src/utils/
-  // Go up 2 levels to reach student-backend/ directory
-  const serviceAccountPath = path.join(
-    __dirname,
-    "../../college360x-firebase-adminsdk-fbsvc-1474ab2f32.json"
-  );
-
   // Initialize Firebase Admin if not already initialized
   if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccountPath),
-    });
-    firebaseAdminInitialized = true;
-    console.log("Firebase Admin SDK initialized successfully");
+    let credential;
+    
+    // Priority 1: Use environment variables (for production/cloud deployments)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        // Parse JSON from environment variable
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        credential = admin.credential.cert(serviceAccount);
+        console.log("✅ Firebase Admin SDK initialized from environment variable");
+      } catch (parseError) {
+        console.error("❌ Failed to parse FIREBASE_SERVICE_ACCOUNT environment variable:", parseError.message);
+        throw parseError;
+      }
+    }
+    // Priority 2: Use individual environment variables (alternative method)
+    else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+      credential = admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      });
+      console.log("✅ Firebase Admin SDK initialized from individual environment variables");
+    }
+    // Priority 3: Try to load from file (for local development)
+    else {
+      const serviceAccountPath = path.join(
+        __dirname,
+        "../../college360x-firebase-adminsdk-fbsvc-1474ab2f32.json"
+      );
+      
+      // Check if file exists before trying to load it
+      if (fs.existsSync(serviceAccountPath)) {
+        try {
+          credential = admin.credential.cert(serviceAccountPath);
+          console.log("✅ Firebase Admin SDK initialized from file (local development)");
+        } catch (fileError) {
+          console.error("❌ Error loading Firebase credentials file:", fileError.message);
+          console.warn("⚠️  Firebase notifications will be disabled.");
+          firebaseAdminInitialized = false;
+          return; // Exit early - don't initialize
+        }
+      } else {
+        // File doesn't exist - this is OK for production
+        console.warn("⚠️  Firebase credentials file not found. Firebase notifications will be disabled.");
+        console.warn("   To enable Firebase notifications, set FIREBASE_SERVICE_ACCOUNT environment variable");
+        console.warn("   or provide FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL");
+        firebaseAdminInitialized = false;
+        return; // Exit early - don't initialize
+      }
+    }
+    
+    // Initialize with the credential we found
+    if (credential) {
+      admin.initializeApp({
+        credential: credential,
+      });
+      firebaseAdminInitialized = true;
+    }
   } else {
     firebaseAdminInitialized = true;
   }
 } catch (error) {
-  console.error("Error initializing Firebase Admin SDK:", error);
+  console.error("❌ Error initializing Firebase Admin SDK:", error.message);
+  console.warn("⚠️  Firebase notifications will be disabled. App will continue to work without push notifications.");
   firebaseAdminInitialized = false;
 }
 
@@ -45,7 +92,7 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
   console.log("🔔 [NOTIFICATION] Attempting to send notification:", { title, body, hasToken: !!fcmToken, data });
   
   if (!firebaseAdminInitialized) {
-    console.error("❌ [NOTIFICATION] Firebase Admin SDK is not initialized");
+    console.warn("⚠️  [NOTIFICATION] Firebase Admin SDK is not initialized - notification skipped");
     return { success: false, error: "Firebase Admin SDK not initialized" };
   }
 
@@ -148,7 +195,7 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
   });
   
   if (!firebaseAdminInitialized) {
-    console.error("❌ [NOTIFICATION] Firebase Admin SDK is not initialized");
+    console.warn("⚠️  [NOTIFICATION] Firebase Admin SDK is not initialized - batch notifications skipped");
     return { success: false, error: "Firebase Admin SDK not initialized" };
   }
 
