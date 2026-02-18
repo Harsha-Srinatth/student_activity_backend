@@ -51,25 +51,26 @@ try {
         } catch (fileError) {
           console.error("❌ Error loading Firebase credentials file:", fileError.message);
           console.warn("⚠️  Firebase notifications will be disabled.");
-          firebaseAdminInitialized = false;
-          return; // Exit early - don't initialize
+          // credential remains undefined, so Firebase won't be initialized
         }
       } else {
         // File doesn't exist - this is OK for production
         console.warn("⚠️  Firebase credentials file not found. Firebase notifications will be disabled.");
         console.warn("   To enable Firebase notifications, set FIREBASE_SERVICE_ACCOUNT environment variable");
         console.warn("   or provide FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL");
-        firebaseAdminInitialized = false;
-        return; // Exit early - don't initialize
+        // credential remains undefined, so Firebase won't be initialized
       }
     }
     
-    // Initialize with the credential we found
+    // Initialize with the credential we found (only if credential was set)
     if (credential) {
       admin.initializeApp({
         credential: credential,
       });
       firebaseAdminInitialized = true;
+    } else {
+      // No credential found - Firebase will remain uninitialized
+      firebaseAdminInitialized = false;
     }
   } else {
     firebaseAdminInitialized = true;
