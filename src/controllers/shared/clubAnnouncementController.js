@@ -137,9 +137,13 @@ export const createClubAnnouncement = async (req, res) => {
       announcement: announcementData,
     });
 
-    // Send push notifications to selected year students only
-    if (targetYearsArray.length > 0) {
-      try {
+    // Send push notifications to students
+    // If targetYears is specified, send only to those years; otherwise send to all students
+    try {
+      let students;
+      let targetYearsText = "";
+      
+      if (targetYearsArray.length > 0) {
         // Map year to semester ranges: 1st = 1-2, 2nd = 3-4, 3rd = 5-6, 4th = 7-8
         const yearToSemesterMap = {
           "1st": ["1", "2"],
@@ -159,41 +163,52 @@ export const createClubAnnouncement = async (req, res) => {
 
         // Find students in the selected years (by semester)
         // Semester is stored as string in the database
-        const students = await StudentDetails.find({
+        students = await StudentDetails.find({
           collegeId,
           semester: { $in: targetSemesters },
         })
           .select("studentid fcmToken semester")
           .lean();
-
-        // Filter students by FCM token
-        const studentTokens = students
-          .map(s => s.fcmToken)
-          .filter(token => token && token.trim() !== "");
-
-        if (studentTokens.length > 0) {
-          await sendBatchNotifications(
-            studentTokens,
-            `New Club Event: ${title}`,
-            `From ${club.clubName} - ${content.length > 100 ? content.substring(0, 100) + "..." : content}`,
-            {
-              type: "club_announcement",
-              announcementId: announcement._id.toString(),
-              clubId: club.clubId,
-              clubName: club.clubName,
-              targetYears: targetYearsArray.join(","),
-              priority: priority || "medium",
-              timestamp: new Date().toISOString(),
-            }
-          );
-          console.log(`Sent club announcement notification to ${studentTokens.length} students (years: ${targetYearsArray.join(", ")})`);
-        } else {
-          console.log(`No students with FCM tokens found for years: ${targetYearsArray.join(", ")}`);
-        }
-      } catch (notifError) {
-        console.error("Error sending club announcement notifications:", notifError);
-        // Don't fail the request if notifications fail
+        
+        targetYearsText = ` (years: ${targetYearsArray.join(", ")})`;
+        console.log(`🔔 [Club Announcement] Targeting specific years: ${targetYearsArray.join(", ")} (semesters: ${targetSemesters.join(", ")})`);
+      } else {
+        // No targetYears specified - send to ALL students in the college
+        students = await StudentDetails.find({ collegeId })
+          .select("studentid fcmToken semester")
+          .lean();
+        
+        targetYearsText = " (all students)";
+        console.log(`🔔 [Club Announcement] No target years specified - sending to ALL students in college`);
       }
+
+      // Filter students by FCM token
+      const studentTokens = students
+        .map(s => s.fcmToken)
+        .filter(token => token && token.trim() !== "");
+
+      if (studentTokens.length > 0) {
+        await sendBatchNotifications(
+          studentTokens,
+          `New Club Event: ${title}`,
+          `From ${club.clubName} - ${content.length > 100 ? content.substring(0, 100) + "..." : content}`,
+          {
+            type: "club_announcement",
+            announcementId: announcement._id.toString(),
+            clubId: club.clubId,
+            clubName: club.clubName,
+            targetYears: targetYearsArray.length > 0 ? targetYearsArray.join(",") : "all",
+            priority: priority || "medium",
+            timestamp: new Date().toISOString(),
+          }
+        );
+        console.log(`✅ [Club Announcement] Notification sent to ${studentTokens.length} students${targetYearsText}`);
+      } else {
+        console.log(`⚠️  [Club Announcement] No students with FCM tokens found${targetYearsText}`);
+      }
+    } catch (notifError) {
+      console.error("❌ [Club Announcement] Error sending notifications:", notifError);
+      // Don't fail the request if notifications fail
     }
 
     // Return announcement with club details populated

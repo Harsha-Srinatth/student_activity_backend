@@ -4,7 +4,7 @@ import {
   emitStudentDashboardDataUpdate,
   emitUserNotification
 } from "../../utils/socketEmitter.js";
-import { sendNotificationToFaculty } from "../../utils/firebaseNotification.js";
+import { sendNotificationToFaculty, sendNotificationToStudent } from "../../utils/firebaseNotification.js";
 
 /**
  * GET all clubs joined for logged in student
@@ -108,7 +108,11 @@ const enrollInClub = async (req, res) => {
       await emitStudentDashboardDataUpdate(studentid);
       
       // Get club details for notification
-      const club = await ClubDetail.findOne({ clubId }).select('clubName facultyCoordinator').lean();
+      const club = await ClubDetail.findOne({ clubId }).select('clubName facultyCoordinator studentHead').lean();
+      
+      // Get student details for notification message
+      const studentDetails = await StudentDetails.findOne({ studentid }).select('fullname').lean();
+      const studentName = studentDetails?.fullname || studentid;
       
       // Notify faculty coordinator if exists
       if (club?.facultyCoordinator) {
@@ -116,7 +120,7 @@ const enrollInClub = async (req, res) => {
         emitUserNotification(club.facultyCoordinator, {
           type: 'club_enrollment',
           title: 'New Club Enrollment',
-          message: `Student ${studentid} enrolled in ${club.clubName || clubId}`,
+          message: `${studentName} enrolled in ${club.clubName || clubId}`,
           data: { studentid, clubId, clubName: club.clubName }
         });
         
@@ -125,7 +129,7 @@ const enrollInClub = async (req, res) => {
           await sendNotificationToFaculty(
             club.facultyCoordinator,
             "New Club Enrollment 🎯",
-            `Student ${studentid} enrolled in ${club.clubName || clubId}`,
+            `${studentName} enrolled in ${club.clubName || clubId}`,
             {
               type: "club_enrollment",
               studentid: studentid,
@@ -136,6 +140,35 @@ const enrollInClub = async (req, res) => {
           );
         } catch (notifError) {
           console.error(`Error sending push notification to faculty ${club.facultyCoordinator}:`, notifError);
+        }
+      }
+      
+      // Notify student head if exists
+      if (club?.studentHead) {
+        // Socket notification
+        emitUserNotification(club.studentHead, {
+          type: 'club_enrollment',
+          title: 'New Club Member',
+          message: `${studentName} enrolled in ${club.clubName || clubId}`,
+          data: { studentid, clubId, clubName: club.clubName }
+        });
+        
+        // FCM push notification
+        try {
+          await sendNotificationToStudent(
+            club.studentHead,
+            "New Club Member 🎯",
+            `${studentName} enrolled in ${club.clubName || clubId}`,
+            {
+              type: "club_enrollment",
+              studentid: studentid,
+              clubId: clubId,
+              clubName: club.clubName || clubId,
+              timestamp: new Date().toISOString(),
+            }
+          );
+        } catch (notifError) {
+          console.error(`Error sending push notification to student head ${club.studentHead}:`, notifError);
         }
       }
     } catch (socketError) {

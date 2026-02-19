@@ -1,6 +1,7 @@
 import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import Announcement from "../../models/shared/announcementSchema.js";
+import ClubDetail from "../../models/shared/clubSchema.js";
 
 /**
  * Get overall dashboard stats for HOD's college
@@ -67,6 +68,52 @@ export const getHODDashboardStats = async (req, res) => {
       .limit(5)
       .select("title priority createdAt targetAudience");
 
+    // Get total clubs for this college
+    const totalClubs = await ClubDetail.countDocuments({ collegeId });
+
+    // Get top 5 achievers in HOD's department (most approved docs)
+    const topPerformers = await StudentDetails.aggregate([
+      { $match: { collegeId, dept: department } },
+      {
+        $project: {
+          studentid: 1,
+          fullname: 1,
+          programName: 1,
+          image: 1,
+          achievementCount: {
+            $add: [
+              { $size: { $filter: { input: { $ifNull: ["$certifications", []] }, as: "c", cond: { $eq: ["$$c.verification.status", "approved"] } } } },
+              { $size: { $filter: { input: { $ifNull: ["$projects", []] }, as: "p", cond: { $eq: ["$$p.verification.status", "approved"] } } } },
+              { $size: { $filter: { input: { $ifNull: ["$internships", []] }, as: "i", cond: { $eq: ["$$i.verification.status", "approved"] } } } },
+              { $size: { $filter: { input: { $ifNull: ["$workshops", []] }, as: "w", cond: { $eq: ["$$w.verification.status", "approved"] } } } },
+            ],
+          },
+        },
+      },
+      { $sort: { achievementCount: -1 } },
+      { $limit: 5 },
+    ]);
+
+    // Faculty workload summary (top 5 faculty by students managed)
+    const facultyWorkload = await StudentDetails.aggregate([
+      { $match: { collegeId, dept: department } },
+      { $group: { _id: "$facultyid", studentCount: { $sum: 1 } } },
+      { $sort: { studentCount: -1 } },
+      { $limit: 5 },
+    ]);
+    // Populate faculty names
+    const facultyIds = facultyWorkload.map((f) => f._id).filter(Boolean);
+    const facultyDocs = await FacultyDetails.find({ facultyid: { $in: facultyIds } })
+      .select("facultyid fullname image")
+      .lean();
+    const fMap = new Map(facultyDocs.map((f) => [f.facultyid, f]));
+    const facultyWorkloadPopulated = facultyWorkload.map((f) => ({
+      facultyid: f._id,
+      fullname: fMap.get(f._id)?.fullname || f._id,
+      avatar: fMap.get(f._id)?.image?.url || "",
+      studentCount: f.studentCount,
+    }));
+
     return res.status(200).json({
       success: true,
       data: {
@@ -76,12 +123,26 @@ export const getHODDashboardStats = async (req, res) => {
           activeAnnouncements,
           totalDepartments: departmentStats.length,
           totalSections: sectionStats.length,
+          totalClubs,
         },
-        departmentStats: departmentStats.map(dept => ({
+        departmentStats: departmentStats.map((dept) => ({
           department: dept._id,
           studentCount: dept.studentCount,
         })),
+        sectionStats: sectionStats.map((s) => ({
+          section: s._id || "N/A",
+          studentCount: s.studentCount,
+          department: s.department,
+        })),
         recentAnnouncements,
+        topPerformers: topPerformers.map((s) => ({
+          studentid: s.studentid,
+          fullname: s.fullname,
+          programName: s.programName,
+          avatar: s.image?.url || "",
+          achievementCount: s.achievementCount,
+        })),
+        facultyWorkload: facultyWorkloadPopulated,
       },
     });
   } catch (error) {
@@ -417,6 +478,83 @@ export const getStudentAttendanceBySection = async (req, res) => {
     });
   } catch (error) {
     console.error("Get student attendance by section error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Get ALL departments' performance in the same college
+ * So HOD can compare their dept against others
+ */
+export const getAllDepartmentsComparison = async (req, res) => {
+  try {
+    const { collegeId } = req.user;
+
+    const deptStats = await StudentDetails.aggregate([
+      { $match: { collegeId } },
+      {
+        $group: {
+          _id: "$dept",
+          totalStudents: { $sum: 1 },
+          avgAttendance: {
+            $avg: {
+              $cond: [
+                { $gt: [{ $size: { $ifNull: ["$attendance", []] } }, 0] },
+                {
+                  $multiply: [
+                    {
+                      $divide: [
+                        { $size: { $filter: { input: { $ifNull: ["$attendance", []] }, as: "e", cond: { $eq: ["$$e.present", true] } } } },
+                        { $size: { $ifNull: ["$attendance", []] } },
+                      ],
+                    },
+                    100,
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+          totalCertifications: {
+            $sum: { $size: { $filter: { input: { $ifNull: ["$certifications", []] }, as: "c", cond: { $eq: ["$$c.verification.status", "approved"] } } } },
+          },
+          totalProjects: {
+            $sum: { $size: { $filter: { input: { $ifNull: ["$projects", []] }, as: "p", cond: { $eq: ["$$p.verification.status", "approved"] } } } },
+          },
+          totalInternships: {
+            $sum: { $size: { $filter: { input: { $ifNull: ["$internships", []] }, as: "i", cond: { $eq: ["$$i.verification.status", "approved"] } } } },
+          },
+        },
+      },
+      { $sort: { totalStudents: -1 } },
+    ]);
+
+    // Faculty count per department
+    const facultyCounts = await FacultyDetails.aggregate([
+      { $match: { collegeId } },
+      { $group: { _id: "$dept", count: { $sum: 1 } } },
+    ]);
+    const facMap = new Map(facultyCounts.map((f) => [f._id, f.count]));
+
+    const departments = deptStats.map((d) => ({
+      department: d._id,
+      totalStudents: d.totalStudents,
+      totalFaculty: facMap.get(d._id) || 0,
+      avgAttendance: Math.round(d.avgAttendance || 0),
+      totalCertifications: d.totalCertifications,
+      totalProjects: d.totalProjects,
+      totalInternships: d.totalInternships,
+      performanceScore: Math.round(
+        (d.avgAttendance || 0) * 0.4 +
+        (d.totalCertifications / Math.max(d.totalStudents, 1)) * 20 * 0.3 +
+        (d.totalProjects / Math.max(d.totalStudents, 1)) * 20 * 0.2 +
+        (d.totalInternships / Math.max(d.totalStudents, 1)) * 20 * 0.1
+      ),
+    }));
+
+    return res.status(200).json({ success: true, data: departments });
+  } catch (error) {
+    console.error("Get all departments comparison error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

@@ -10,6 +10,9 @@ const __dirname = dirname(__filename);
 // Initialize Firebase Admin SDK
 let firebaseAdminInitialized = false;
 
+// Export function to check Firebase initialization status
+export const isFirebaseInitialized = () => firebaseAdminInitialized;
+
 try {
   // Initialize Firebase Admin if not already initialized
   if (!admin.apps.length) {

@@ -50,6 +50,23 @@ router.post("/leave/submit", studentReqForLeave);
 router.get("/leave/requests", studentLeaveRequests);
 router.get("/leave/details/:requestId", getSpecificLeaveReqDetails);
 
+// Doubts
+import {
+  getCollegeDoubts,
+  createDoubt,
+  getDoubtById,
+  createReply,
+  deleteDoubt,
+  toggleSolvedDoubt,
+} from "../controllers/student/doubtController.js";
+
+router.get("/doubts", getCollegeDoubts);
+router.post("/doubts", createDoubt);
+router.get("/doubts/:doubtId", getDoubtById);
+router.post("/doubts/:doubtId/replies", createReply);
+router.delete("/doubts/:doubtId", deleteDoubt);
+router.patch("/doubts/:doubtId/solve", toggleSolvedDoubt);
+
 // Announcements
 router.get("/announcements", getAnnouncementsForUser);
 router.get("/clubs/my", getMyClubs);

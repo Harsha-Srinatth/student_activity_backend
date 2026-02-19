@@ -13,6 +13,7 @@ import {
   getSectionWiseAttendance,
   getStudentAttendanceBySection,
   getAvailableSections,
+  getAllDepartmentsComparison,
 } from "../controllers/hod/hodDashboardController.js";
 import {
   getDepartmentFaculty,
@@ -53,6 +54,7 @@ router.get("/dashboard/department-performance", getDepartmentPerformance);
 router.get("/dashboard/sections", getAvailableSections);
 router.get("/dashboard/attendance/section-wise", getSectionWiseAttendance);
 router.get("/dashboard/attendance/students", getStudentAttendanceBySection);
+router.get("/dashboard/all-departments", getAllDepartmentsComparison);
 
 // Faculty Assignment routes
 router.get("/faculty", getDepartmentFaculty);

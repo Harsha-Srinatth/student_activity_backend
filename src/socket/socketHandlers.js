@@ -59,6 +59,35 @@ export const handleConnection = (socket, io) => {
   
   // Join global room for broadcast updates
   socket.join('global');
+
+  // ---- Doubt Feature: join/leave rooms ----
+  socket.on('doubt:joinCollege', (collegeId) => {
+    if (collegeId) {
+      socket.join(`college:${collegeId}`);
+      console.log(`📚 Socket ${socket.id} joined college room: college:${collegeId}`);
+    }
+  });
+
+  socket.on('doubt:leaveCollege', (collegeId) => {
+    if (collegeId) {
+      socket.leave(`college:${collegeId}`);
+      console.log(`📚 Socket ${socket.id} left college room: college:${collegeId}`);
+    }
+  });
+
+  socket.on('doubt:joinDoubt', (doubtId) => {
+    if (doubtId) {
+      socket.join(`doubt:${doubtId}`);
+      console.log(`💬 Socket ${socket.id} joined doubt room: doubt:${doubtId}`);
+    }
+  });
+
+  socket.on('doubt:leaveDoubt', (doubtId) => {
+    if (doubtId) {
+      socket.leave(`doubt:${doubtId}`);
+      console.log(`💬 Socket ${socket.id} left doubt room: doubt:${doubtId}`);
+    }
+  });
   
   // Handle disconnection
   socket.on('disconnect', (reason) => {

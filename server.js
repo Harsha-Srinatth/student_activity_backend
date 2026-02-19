@@ -18,11 +18,49 @@ import routes from "./src/routes/index.js";
 // import { createRegistrationQueue } from "./src/queue/registrationQueue.js"; // Disabled
 import { Server } from "socket.io";
 import { handleSocketAuth, handleConnection } from "./src/socket/socketHandlers.js";
+import { isFirebaseInitialized } from "./src/utils/firebaseNotification.js";
+import { transporter } from "./src/utils/smtpTransporter.js";
 
 dotenv.config();
 
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
+
+// Function to print service status on startup
+const printServiceStatus = () => {
+  console.log("\n" + "=".repeat(70));
+  console.log("🔍 SERVICE STATUS CHECK");
+  console.log("=".repeat(70));
+  
+  // Check Firebase
+  const firebaseStatus = isFirebaseInitialized();
+  console.log(`📱 Firebase Push Notifications: ${firebaseStatus ? "✅ ENABLED" : "❌ DISABLED"}`);
+  if (!firebaseStatus) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.log("   ⚠️  FIREBASE_SERVICE_ACCOUNT is set but initialization failed");
+      console.log("   💡 Check if the JSON is valid and properly formatted");
+    } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+      console.log("   ⚠️  Individual Firebase env vars are set but initialization failed");
+      console.log("   💡 Check if FIREBASE_PRIVATE_KEY has proper newline characters");
+    } else {
+      console.log("   💡 Set FIREBASE_SERVICE_ACCOUNT environment variable to enable push notifications");
+      console.log("   💡 Or set FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL");
+    }
+  }
+  
+  // Check Email
+  const emailStatus = !!transporter;
+  console.log(`📧 Email Service: ${emailStatus ? "✅ ENABLED" : "❌ DISABLED"}`);
+  if (!emailStatus) {
+    console.log(`   EMAIL_USER: ${process.env.EMAIL_USER ? "✅ Set" : "❌ Not set"}`);
+    console.log(`   EMAIL_PASS: ${process.env.EMAIL_PASS ? "✅ Set" : "❌ Not set"}`);
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.log("   💡 Set EMAIL_USER and EMAIL_PASS environment variables to enable email sending");
+    }
+  }
+  
+  console.log("=".repeat(70) + "\n");
+};
 
 // Middleware
 app.use(helmet());
@@ -116,7 +154,12 @@ mongoose
     useUnifiedTopology: true,
     maxPoolSize: parseInt(process.env.MONGO_POOL_SIZE || "50", 10),
   })
-  .then(() => logger.info("MongoDB connected"))
+  .then(() => {
+    logger.info("MongoDB connected");
+    
+    // Print notification and email service status
+    printServiceStatus();
+  })
   .catch((err) => {
     logger.error({ err }, "MongoDB connection error");
     process.exit(1);
