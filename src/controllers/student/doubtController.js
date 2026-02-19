@@ -1,5 +1,6 @@
 import { Doubt, Reply } from "../../models/student/doubtSchema.js";
 import StudentDetails from "../../models/student/studentDetails.js";
+import { sendNotificationToStudent } from "../../utils/firebaseNotification.js";
 
 // ─── Helper: batch-populate user details onto an array of docs ───
 // Collects all unique createdBy IDs, looks up StudentDetails,
@@ -165,6 +166,8 @@ export const createDoubt = async (req, res) => {
       });
     }
 
+    sendNotificationToStudent(studentId, "New doubt", "A new doubt has been created in your college");
+
     return res.status(201).json({ doubt: populatedDoubt });
   } catch (error) {
     console.error("Error creating doubt:", error);
@@ -294,7 +297,7 @@ export const createReply = async (req, res) => {
         doubtId,
       });
     }
-
+    sendNotificationToStudent(studentId, "New reply", "A new reply has been created to your doubt");
     return res.status(201).json({ reply: populatedReply });
   } catch (error) {
     console.error("Error creating reply:", error);
@@ -340,6 +343,8 @@ export const deleteDoubt = async (req, res) => {
       global.io.to(`college:${collegeId}`).emit("doubt:delete", payload);
       global.io.to(`doubt:${doubtId}`).emit("doubt:delete", payload);
     }
+
+    sendNotificationToStudent(studentId, "Doubt deleted", "A doubt has been deleted");
 
     return res
       .status(200)
@@ -387,6 +392,8 @@ export const toggleSolvedDoubt = async (req, res) => {
       global.io.to(`college:${doubt.collegeId}`).emit("doubt:update", payload);
       global.io.to(`doubt:${doubtId}`).emit("doubt:update", payload);
     }
+
+    sendNotificationToStudent(studentId, "Doubt solved", "A doubt has been solved");
 
     return res.status(200).json({ doubt: populatedDoubt });
   } catch (error) {
