@@ -24,7 +24,7 @@ const faculty_Dashboard_Details = async (req, res) => {
       { lastLogin: new Date() },
       { 
         new: true, // Return updated document
-        select: 'fullname facultyid collegeId dept designation approvalsCount lastLogin email mobile username dateofjoin image sectionsAssigned subjects fcmToken'
+        select: 'fullname facultyid collegeId dept designation approvalsCount lastLogin email mobile username dateofjoin image sectionsAssigned subjects fcmDevices'
       }
     );
 
@@ -61,7 +61,10 @@ const faculty_Dashboard_Details = async (req, res) => {
         approvalsCount: faculty.approvalsCount,
         sectionsAssigned: faculty.sectionsAssigned || [], // Include assigned sections
         subjects: faculty.subjects || [], // Include subjects
-        fcmToken: faculty.fcmToken || null,
+        // Return first token from fcmDevices (or null if no tokens)
+        fcmToken: (faculty.fcmDevices && faculty.fcmDevices.length > 0) 
+          ? faculty.fcmDevices[0].token 
+          : null,
       },
       stats: dashboardStats,
       lastUpdated: new Date()

@@ -24,6 +24,7 @@ import {
   getFacultySections,
   getHODInfo,
 } from "../controllers/hod/hodAssignmentController.js";
+import updateHODSettings from "../controllers/hod/update_settings.js";
 import { checkauth, requireRole } from "../middlewares/authCheck.js";
 import uploadAnnouncement from "../middlewares/uploadAnnouncement.js";
 import uploadClubImage from "../middlewares/uploadClubImage.js";
@@ -47,6 +48,9 @@ router.get("/info", checkauth, getHODInfo);
 // Protected routes - require HOD authentication
 router.use(checkauth);
 router.use(requireRole("hod"));
+
+// Settings route
+router.put("/settings", updateHODSettings);
 
 // Dashboard routes
 router.get("/dashboard/stats", getHODDashboardStats);

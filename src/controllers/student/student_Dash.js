@@ -37,7 +37,7 @@ const student_Dashboard_Details = async (req, res) => {
           dept: 1,
           programName: 1,
           facultyid: 1,
-          fcmToken: 1,
+          fcmDevices: 1,
           "image.url": 1,
           collegeName: {
             $let: {
@@ -200,6 +200,10 @@ const student_Dashboard_Details = async (req, res) => {
         programName: student.programName,
         collegeName: student.collegeName,
         profileImage: student.image?.url ? { url: student.image.url } : null,
+        // Return first token from fcmDevices (or null if no tokens)
+        fcmToken: (student.fcmDevices && student.fcmDevices.length > 0) 
+          ? student.fcmDevices[0].token 
+          : null,
         faculty: student.facultyid ? {
           facultyid: student.facultyid,
           fullname: facultyNameMap.get(student.facultyid) || undefined,

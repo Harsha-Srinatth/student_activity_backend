@@ -43,9 +43,7 @@ export const handleConnection = (socket, io) => {
   console.log(`Socket connected: ${socket.id} (User: ${socket.userId}, Role: ${socket.userRole})`);
   
   // Register socket in manager
-  if (socket.userId && socket.userRole) {
-    socketManager.registerSocket(socket.id, socket.userId, socket.userRole);
-  }
+  socketManager.registerSocket(socket.id, socket.userId, socket.userRole);
   
   // Join user-specific room
   if (socket.userId) {
@@ -93,7 +91,7 @@ export const handleConnection = (socket, io) => {
   socket.on('disconnect', (reason) => {
     console.log(`Socket disconnected: ${socket.id} (Reason: ${reason})`);
     // Unregister socket from manager
-    socketManager.unregisterSocket(socket.id);
+    socketManager.unregisterSocket(socket.id, socket.userRole);
   });
   
   // Handle errors
@@ -104,56 +102,139 @@ export const handleConnection = (socket, io) => {
 
 /**
  * Emit real-time update to specific user
+ * Uses SocketManager for efficient socket lookup
  */
-export const emitToUser = (io, userId, event, data) => {
+export const emitToUser = (io, userId, role, event, data) => {
+  if (!io || !userId || !role) {
+    console.warn('emitToUser: Missing required parameters', { userId, role });
+    return false;
+  }
+  
+  // Use SocketManager for efficient emission
+  const emitted = socketManager.emitToUser(io, userId, role, event, data);
+  
+  // Also emit to room for backward compatibility
   io.to(`user:${userId}`).emit(event, data);
+  
+  return emitted;
 };
 
 /**
  * Emit real-time update to all users of a specific role
+ * Uses SocketManager for efficient socket lookup
  */
 export const emitToRole = (io, role, event, data) => {
+  if (!io || !role) {
+    console.warn('emitToRole: Missing required parameters', { role });
+    return 0;
+  }
+
+  // Validate role - "both" is not a valid role
+  if (role === "both") {
+    console.error(`❌ [SOCKET] Invalid role "both" passed to emitToRole. This should be expanded to ["student", "faculty"] before calling. Event: ${event}`);
+    // Automatically expand "both" to student and faculty as a safety net
+    let totalCount = 0;
+    totalCount += socketManager.emitToRole(io, 'student', event, data);
+    io.to(`role:student`).emit(event, data);
+    totalCount += socketManager.emitToRole(io, 'faculty', event, data);
+    io.to(`role:faculty`).emit(event, data);
+    return totalCount;
+  }
+
+  // Validate role is one of the valid roles
+  const validRoles = ['student', 'faculty', 'hod', 'admin'];
+  if (!validRoles.includes(role)) {
+    console.error(`❌ [SOCKET] Invalid role "${role}" passed to emitToRole. Valid roles are: ${validRoles.join(', ')}. Event: ${event}`);
+    return 0;
+  }
+  
+  // Use SocketManager for efficient emission
+  const socketCount = socketManager.emitToRole(io, role, event, data);
+  
+  // Also emit to room for backward compatibility
   io.to(`role:${role}`).emit(event, data);
+  
+  return socketCount;
 };
 
 /**
  * Emit real-time update to all connected clients
  */
 export const emitToAll = (io, event, data) => {
+  if (!io) {
+    console.warn('emitToAll: Socket.IO instance not provided');
+    return;
+  }
   io.to('global').emit(event, data);
 };
 
 /**
  * Helper to emit dashboard updates
+ * Uses SocketManager for efficient emission
  */
 export const emitDashboardUpdate = (io, userId, role, updateType, data) => {
-  // Update specific user
-  if (userId) {
-    emitToUser(io, userId, `dashboard:${updateType}`, data);
+  if (!io) {
+    console.warn('emitDashboardUpdate: Socket.IO instance not provided');
+    return;
+  }
+
+  // Update specific user using SocketManager
+  if (userId && role) {
+    socketManager.emitToUser(io, userId, role, `dashboard:${updateType}`, data);
+    // Also emit to room for backward compatibility
+    io.to(`user:${userId}`).emit(`dashboard:${updateType}`, data);
   }
   
   // Update all users of the same role if needed
   if (role) {
-    emitToRole(io, role, `dashboard:${updateType}:${role}`, data);
+    socketManager.emitToRole(io, role, `dashboard:${updateType}:${role}`, data);
+    // Also emit to room for backward compatibility
+    io.to(`role:${role}`).emit(`dashboard:${updateType}:${role}`, data);
   }
 };
+
 /**
  * Helper to emit notification
+ * Uses SocketManager for efficient emission
  */
-export const emitNotification = (io, userId, notification) => {
-  emitToUser(io, userId, 'notification', notification);
+export const emitNotification = (io, userId, role, notification) => {
+  if (!io || !userId || !role) {
+    console.warn('emitNotification: Missing required parameters', { userId, role });
+    return false;
+  }
+  
+  const notificationData = {
+    ...notification,
+    id: notification.id || Date.now().toString(),
+    timestamp: notification.timestamp || Date.now(),
+  };
+  
+  const emitted = socketManager.emitToUser(io, userId, role, 'notification', notificationData);
+  // Also emit to room for backward compatibility
+  io.to(`user:${userId}`).emit('notification', notificationData);
+  
+  return emitted;
 };
+
 /**
  * Helper to emit attendance update to specific students
+ * Uses SocketManager for efficient emission
  */
 export const emitAttendanceUpdateToStudents = (io, studentIds, attendanceData) => {
+  if (!io) {
+    console.warn('emitAttendanceUpdateToStudents: Socket.IO instance not provided');
+    return;
+  }
+
   // Handle both single student ID and array of student IDs
   const studentIdArray = Array.isArray(studentIds) ? studentIds : [studentIds];
   
   // Emit to each specific student who received attendance data
   studentIdArray.forEach((studentId) => {
     if (studentId) {
-      emitToUser(io, studentId, 'attendance:students', attendanceData);
+      socketManager.emitToUser(io, studentId, 'student', 'attendance:students', attendanceData);
+      // Also emit to room for backward compatibility
+      io.to(`user:${studentId}`).emit('attendance:students', attendanceData);
       console.log(`📤 Emitted attendance update to student ${studentId}`);
     }
   });

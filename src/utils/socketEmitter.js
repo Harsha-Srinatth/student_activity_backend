@@ -7,6 +7,7 @@ import {
   emitToUsersIfConnected,
   emitToRoleIfConnected
 } from './realtimeUpdate.js';
+import socketManager from '../socket/socketManager.js';
 import StudentDetails from '../models/student/studentDetails.js';
 
 /**
@@ -65,13 +66,50 @@ export const emitFacultyPendingApprovalsUpdate = (facultyId, pendingApprovals) =
 
 /**
  * Emit notification to user
+ * Automatically determines role by checking SocketManager
+ * @param {string} userId - User ID
+ * @param {Object} notification - Notification data
+ * @param {string} [role] - Optional role hint (student, faculty, hod, admin)
  */
-export const emitUserNotification = (userId, notification) => {
-  emitNotification(userId, notification);
+export const emitUserNotification = (userId, notification, role = null) => {
+  if (!userId) {
+    console.warn('emitUserNotification: userId is required');
+    return false;
+  }
+
+  // If role is provided, use it directly
+  if (role) {
+    return emitNotification(userId, role, notification);
+  }
+
+  // Try to determine role by checking which role map contains this user
+  const roles = ['student', 'faculty', 'hod', 'admin'];
+  for (const testRole of roles) {
+    if (socketManager.isUserConnected(userId, testRole)) {
+      return emitNotification(userId, testRole, notification);
+    }
+  }
+
+  // If user is not connected, try to emit to all possible roles
+  // This ensures notification is sent if user connects later via room-based emission
+  // But we'll still use SocketManager for direct socket emission
+  let emitted = false;
+  for (const testRole of roles) {
+    if (emitNotification(userId, testRole, notification)) {
+      emitted = true;
+    }
+  }
+
+  if (!emitted) {
+    console.warn(`emitUserNotification: User ${userId} not found in any role, notification may not be delivered`);
+  }
+
+  return emitted;
 };
 
 /**
  * Emit announcement update to role(s)
+ * Handles "both" by emitting to both "student" and "faculty" roles
  */
 export const emitAnnouncementUpdate = (role, announcementData) => {
   if (!global.io) {
@@ -85,7 +123,14 @@ export const emitAnnouncementUpdate = (role, announcementData) => {
   });
 
   if (role) {
-    emitToRoleIfConnected(global.io, role, 'dashboard:announcements', announcementData);
+    // Handle "both" role by emitting to both student and faculty
+    if (role === "both") {
+      emitToRoleIfConnected(global.io, 'student', 'dashboard:announcements', announcementData);
+      emitToRoleIfConnected(global.io, 'faculty', 'dashboard:announcements', announcementData);
+    } else {
+      // Emit to specific role
+      emitToRoleIfConnected(global.io, role, 'dashboard:announcements', announcementData);
+    }
   } else {
     // Emit to all roles if no role specified
     emitToRoleIfConnected(global.io, 'student', 'dashboard:announcements', announcementData);
@@ -104,7 +149,7 @@ export const emitAttendanceUpdate = (studentIds, attendanceData) => {
   }
 
   const studentIdArray = Array.isArray(studentIds) ? studentIds : [studentIds];
-  emitToUsersIfConnected(studentIdArray, 'attendance:students', attendanceData);
+  emitToRoleIfConnected(global.io, 'student', 'attendance:students', attendanceData);
 };
 
 /**

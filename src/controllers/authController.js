@@ -20,7 +20,7 @@ const facultySchema = Joi.object({
   password: Joi.string().min(8).required(),
   dateofjoin: Joi.date().iso().required(),
   subjects: Joi.array().items(Joi.string().trim()).min(1).optional().default([]),
-  fcmToken: Joi.string().trim().optional().allow("", null),
+  // fcmToken removed - use fcmTokenData in settings endpoint after login
 });
 
 //validate student details
@@ -37,7 +37,7 @@ const studentSchema = Joi.object({
   semester: Joi.string().trim().optional().allow(""),
   facultyid: Joi.string().trim().required(),
   dateofjoin: Joi.date().iso().required(),
-  fcmToken: Joi.string().trim().optional().allow("", null),
+  // fcmToken removed - use fcmTokenData in settings endpoint after login
 });
 
 // Validation schema for HOD
@@ -50,7 +50,7 @@ const hodSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
   mobile: Joi.string().pattern(/^[0-9+ -]{7,20}$/).required(),
-  fcmToken: Joi.string().trim().optional().allow("", null),
+  // fcmToken removed - use fcmTokenData in settings endpoint after login
 });
 
 export const enqueueFacultyRegistration = async (req, res) => {
@@ -75,7 +75,7 @@ export const enqueueFacultyRegistration = async (req, res) => {
       password: hashedPassword,
       dateofjoin: value.dateofjoin,
       subjects: value.subjects || [],
-      fcmToken: value.fcmToken || null,
+      // fcmToken removed - users should register tokens via settings endpoint after login
     };
 
     // Save to database
@@ -96,15 +96,8 @@ export const enqueueFacultyRegistration = async (req, res) => {
       console.error("Email sending error:", err);
     }
 
-    // Send welcome push notification if token is provided
-    if (facultyDoc.fcmToken) {
-      try {
-        await sendWelcomeNotification(facultyDoc.fcmToken, facultyDoc.fullname, "faculty");
-      } catch (err) {
-        console.error("Push notification sending error:", err);
-        // Don't fail registration if notification fails
-      }
-    }
+    // Welcome notifications should be sent after user enables notifications in settings
+    // FCM tokens are now managed via fcmTokenData in settings endpoint
 
     return res.status(201).json({
       message: "Faculty registration successful!",
@@ -143,7 +136,7 @@ export const enqueueStudentRegistration = async (req, res) => {
       semester: value.semester,
       facultyid: value.facultyid,
       dateofjoin: value.dateofjoin,
-      fcmToken: value.fcmToken || null,
+      // fcmToken removed - users should register tokens via settings endpoint after login
     };
 
     // Save to database
@@ -164,15 +157,8 @@ export const enqueueStudentRegistration = async (req, res) => {
       console.error("Email sending error:", err);
     }
 
-    // Send welcome push notification if token is provided
-    if (studentDoc.fcmToken) {
-      try {
-        await sendWelcomeNotification(studentDoc.fcmToken, studentDoc.fullname, "student");
-      } catch (err) {
-        console.error("Push notification sending error:", err);
-        // Don't fail registration if notification fails
-      }
-    }
+    // Welcome notifications should be sent after user enables notifications in settings
+    // FCM tokens are now managed via fcmTokenData in settings endpoint
 
     return res.status(201).json({
       message: "Student registration successful!",
@@ -210,7 +196,7 @@ export const enqueueHODRegistration = async (req, res) => {
       password: hashedPassword,
       mobile: value.mobile,
       isActive: true,
-      fcmToken: value.fcmToken || null,
+      // fcmToken removed - users should register tokens via settings endpoint after login
     };
 
     // Save to database
@@ -232,15 +218,8 @@ export const enqueueHODRegistration = async (req, res) => {
       console.error("Email sending error:", err);
     }
 
-    // Send welcome push notification if token is provided
-    if (hodDoc.fcmToken) {
-      try {
-        await sendWelcomeNotification(hodDoc.fcmToken, hodDoc.fullname, "hod");
-      } catch (err) {
-        console.error("Push notification sending error:", err);
-        // Don't fail registration if notification fails
-      }
-    }
+    // Welcome notifications should be sent after user enables notifications in settings
+    // FCM tokens are now managed via fcmTokenData in settings endpoint
 
     return res.status(201).json({
       message: "HOD registration successful!",

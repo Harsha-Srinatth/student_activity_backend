@@ -66,7 +66,34 @@ export const createAnnouncement = async (req, res) => {
 
     await announcement.save();
 
-    // Emit real-time update via Socket.IO with full announcement data
+    // Emit real-time update via Socket.IO
+    // Expand "both" to ["student", "faculty"] for socket emission
+    const rolesToEmit = [];
+    
+    // Expand targetAudience to actual roles
+    if (targetAudienceArray && targetAudienceArray.length > 0) {
+      targetAudienceArray.forEach(audience => {
+        if (audience === "both") {
+          // "both" means emit to both student and faculty
+          if (!rolesToEmit.includes("student")) rolesToEmit.push("student");
+          if (!rolesToEmit.includes("faculty")) rolesToEmit.push("faculty");
+        } else if (audience === "student" || audience === "faculty") {
+          // Add specific role if not already added
+          if (!rolesToEmit.includes(audience)) rolesToEmit.push(audience);
+        }
+      });
+    } else {
+      // If no target audience specified, emit to all
+      rolesToEmit.push("student", "faculty");
+    }
+    
+    console.log("📡 [SOCKET] Admin emitting announcement update:", { 
+      rolesToEmit, 
+      announcementId: announcement._id, 
+      title: announcement.title 
+    });
+    
+    // Prepare full announcement data for socket emission
     const announcementData = {
       _id: announcement._id,
       title: announcement.title,
@@ -80,14 +107,14 @@ export const createAnnouncement = async (req, res) => {
       isActive: announcement.isActive,
       createdBy: announcement.createdBy,
     };
-    
-    emitAnnouncementUpdate(
-      targetAudienceArray && targetAudienceArray.length === 1 ? targetAudienceArray[0] : null,
-      {
+
+    // Emit to each role separately
+    rolesToEmit.forEach(role => {
+      emitAnnouncementUpdate(role, {
         type: "new",
         announcement: announcementData,
-      }
-    );
+      });
+    });
 
     // Send push notifications based on target audience
     try {
@@ -99,15 +126,24 @@ export const createAnnouncement = async (req, res) => {
       if (shouldNotifyStudents) {
         try {
           const students = await StudentDetails.find({ collegeId })
-            .select("studentid fcmToken")
+            .select("studentid fcmDevices")
             .lean();
           
-          const studentTokens = students
-            .map(s => s.fcmToken)
-            .filter(token => token && token.trim() !== "");
+          // Collect all FCM tokens from all devices
+          const studentTokens = [];
+          students.forEach(student => {
+            if (student.fcmDevices && student.fcmDevices.length > 0) {
+              student.fcmDevices.forEach(device => {
+                if (device.token && device.token.trim() !== "") {
+                  studentTokens.push(device.token);
+                }
+              });
+            }
+          });
 
           if (studentTokens.length > 0) {
-            console.log(`🔔 [Admin Announcement] Sending notifications to ${studentTokens.length} students`);
+            const studentCount = students.length;
+            console.log(`🔔 [Admin Announcement] Sending notifications to ${studentCount} students (${studentTokens.length} device tokens)`);
             await sendBatchNotifications(
               studentTokens,
               `New Announcement: ${title}`,
@@ -117,9 +153,10 @@ export const createAnnouncement = async (req, res) => {
                 announcementId: announcement._id.toString(),
                 priority: priority || "medium",
                 timestamp: new Date().toISOString(),
+                link: "/student/announcements",
               }
             );
-            console.log(`✅ [Admin Announcement] Notification sent to ${studentTokens.length} students`);
+            console.log(`✅ [Admin Announcement] Notification sent to ${studentCount} students (${studentTokens.length} tokens)`);
           }
         } catch (studentNotifError) {
           console.error("Error sending notifications to students:", studentNotifError);
@@ -130,15 +167,24 @@ export const createAnnouncement = async (req, res) => {
       if (shouldNotifyFaculty) {
         try {
           const faculty = await FacultyDetails.find({ collegeId })
-            .select("facultyid fcmToken")
+            .select("facultyid fcmDevices")
             .lean();
           
-          const facultyTokens = faculty
-            .map(f => f.fcmToken)
-            .filter(token => token && token.trim() !== "");
+          // Collect all FCM tokens from all devices
+          const facultyTokens = [];
+          faculty.forEach(f => {
+            if (f.fcmDevices && f.fcmDevices.length > 0) {
+              f.fcmDevices.forEach(device => {
+                if (device.token && device.token.trim() !== "") {
+                  facultyTokens.push(device.token);
+                }
+              });
+            }
+          });
 
           if (facultyTokens.length > 0) {
-            console.log(`🔔 [Admin Announcement] Sending notifications to ${facultyTokens.length} faculty`);
+            const facultyCount = faculty.length;
+            console.log(`🔔 [Admin Announcement] Sending notifications to ${facultyCount} faculty (${facultyTokens.length} device tokens)`);
             await sendBatchNotifications(
               facultyTokens,
               `New Announcement: ${title}`,
@@ -148,9 +194,10 @@ export const createAnnouncement = async (req, res) => {
                 announcementId: announcement._id.toString(),
                 priority: priority || "medium",
                 timestamp: new Date().toISOString(),
+                link: "/faculty/announcements",
               }
             );
-            console.log(`✅ [Admin Announcement] Notification sent to ${facultyTokens.length} faculty`);
+            console.log(`✅ [Admin Announcement] Notification sent to ${facultyCount} faculty (${facultyTokens.length} tokens)`);
           }
         } catch (facultyNotifError) {
           console.error("Error sending notifications to faculty:", facultyNotifError);
@@ -330,11 +377,25 @@ export const updateAnnouncement = async (req, res) => {
     await announcement.save();
 
     // Emit real-time update
-    emitAnnouncementUpdate(
-      announcement.targetAudience && announcement.targetAudience.length === 1 
-        ? announcement.targetAudience[0] 
-        : null,
-      {
+    // Expand "both" to ["student", "faculty"] for socket emission
+    const rolesToEmit = [];
+    
+    if (announcement.targetAudience && announcement.targetAudience.length > 0) {
+      announcement.targetAudience.forEach(audience => {
+        if (audience === "both") {
+          if (!rolesToEmit.includes("student")) rolesToEmit.push("student");
+          if (!rolesToEmit.includes("faculty")) rolesToEmit.push("faculty");
+        } else if (audience === "student" || audience === "faculty") {
+          if (!rolesToEmit.includes(audience)) rolesToEmit.push(audience);
+        }
+      });
+    } else {
+      rolesToEmit.push("student", "faculty");
+    }
+    
+    // Emit to each role separately
+    rolesToEmit.forEach(role => {
+      emitAnnouncementUpdate(role, {
         type: "update",
         announcement: {
           _id: announcement._id,
@@ -342,10 +403,11 @@ export const updateAnnouncement = async (req, res) => {
           content: announcement.content,
           priority: announcement.priority,
           image: announcement.image,
+          targetAudience: announcement.targetAudience,
           updatedAt: announcement.updatedAt,
         },
-      }
-    );
+      });
+    });
 
     return res.status(200).json({
       success: true,
@@ -380,15 +442,29 @@ export const deleteAnnouncement = async (req, res) => {
     await Announcement.deleteOne({ _id: id, collegeId });
 
     // Emit real-time update
-    emitAnnouncementUpdate(
-      announcement.targetAudience && announcement.targetAudience.length === 1 
-        ? announcement.targetAudience[0] 
-        : null,
-      {
+    // Expand "both" to ["student", "faculty"] for socket emission
+    const rolesToEmit = [];
+    
+    if (announcement.targetAudience && announcement.targetAudience.length > 0) {
+      announcement.targetAudience.forEach(audience => {
+        if (audience === "both") {
+          if (!rolesToEmit.includes("student")) rolesToEmit.push("student");
+          if (!rolesToEmit.includes("faculty")) rolesToEmit.push("faculty");
+        } else if (audience === "student" || audience === "faculty") {
+          if (!rolesToEmit.includes(audience)) rolesToEmit.push(audience);
+        }
+      });
+    } else {
+      rolesToEmit.push("student", "faculty");
+    }
+    
+    // Emit to each role separately
+    rolesToEmit.forEach(role => {
+      emitAnnouncementUpdate(role, {
         type: "delete",
         announcementId: id,
-      }
-    );
+      });
+    });
 
     return res.status(200).json({
       success: true,

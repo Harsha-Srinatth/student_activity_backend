@@ -105,9 +105,15 @@ const FacultySchema = new mongoose.Schema(
     notificationsEnabled: { type: Boolean, default: true },
     emailNotifications: { type: Boolean, default: true },
 
-    // Firebase Cloud Messaging Token for push notifications
-    fcmToken: { type: String, default: null, index: true },
-
+    // Firebase Cloud Messaging Tokens for push notifications (multi-device support)
+    // Array of device objects: { deviceId, token, deviceName, lastUsed }
+    fcmDevices: [{
+      deviceId: { type: String, required: true, index: true },
+      token: { type: String, required: true, index: true },
+      deviceName: { type: String, default: "Unknown Device" },
+      lastUsed: { type: Date, default: Date.now },
+      createdAt: { type: Date, default: Date.now }
+    }],
     // Assignment Tracking
     sectionsAssigned: { type: [SectionAssignmentSchema], default: [] },
   },

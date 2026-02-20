@@ -110,7 +110,7 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
     // For production, this should be your deployed frontend URL
     // For web push, icon needs to be a publicly accessible URL
     const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
-    // Use weblogo.jpg from public folder
+    // Use weblogo.jpg from public folder (matches service worker)
     const iconUrl = `${baseUrl}/weblogo.jpg`;
     
     const message = {
@@ -120,7 +120,8 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
       },
       data: {
         ...data,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        click_action: data.link || "/",
+        link: data.link || "/",
       },
       token: fcmToken,
       // Android specific options
@@ -139,9 +140,14 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
           badge: iconUrl,
           requireInteraction: false,
           title: `College360x: ${title}`,
+          body: body,
+          image: iconUrl,
         },
         fcmOptions: {
           link: data.link || "/",
+        },
+        headers: {
+          Urgency: "normal",
         },
       },
       // APNS (iOS) specific options
@@ -168,9 +174,46 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
   } catch (error) {
     console.error("❌ [NOTIFICATION] Error sending notification:", { error: error.message, code: error.code, title, body });
     
-    // Handle invalid token errors
+    // Handle invalid token errors - remove invalid tokens from database
     if (error.code === "messaging/invalid-registration-token" || 
         error.code === "messaging/registration-token-not-registered") {
+      
+      // Remove invalid token from database
+      try {
+        const { removeDeviceTokenByToken } = await import("./fcmTokenManager.js");
+        const StudentDetails = (await import("../models/student/studentDetails.js")).default;
+        const FacultyDetails = (await import("../models/faculty/facultyDetails.js")).default;
+        const HOD = (await import("../models/Hod/hodDetails.js")).default;
+        
+        console.log(`🗑️ [NOTIFICATION] Marking token for removal: ${fcmToken.substring(0, 20)}...`);
+        
+        // Find and remove from students
+        const student = await StudentDetails.findOne({ "fcmDevices.token": fcmToken });
+        if (student) {
+          await removeDeviceTokenByToken(student, fcmToken);
+          await student.save();
+          console.log(`✅ [NOTIFICATION] Removed invalid token from student ${student.studentid}`);
+        }
+        
+        // Find and remove from faculty
+        const faculty = await FacultyDetails.findOne({ "fcmDevices.token": fcmToken });
+        if (faculty) {
+          await removeDeviceTokenByToken(faculty, fcmToken);
+          await faculty.save();
+          console.log(`✅ [NOTIFICATION] Removed invalid token from faculty ${faculty.facultyid}`);
+        }
+        
+        // Find and remove from HOD
+        const hod = await HOD.findOne({ "fcmDevices.token": fcmToken });
+        if (hod) {
+          await removeDeviceTokenByToken(hod, fcmToken);
+          await hod.save();
+          console.log(`✅ [NOTIFICATION] Removed invalid token from HOD ${hod.hodId}`);
+        }
+      } catch (cleanupError) {
+        console.error("❌ [NOTIFICATION] Error removing invalid token:", cleanupError);
+      }
+      
       return { 
         success: false, 
         error: "Invalid or unregistered token",
@@ -222,7 +265,7 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
     // Get base URL from environment or use default
     // For web push, icon needs to be a publicly accessible URL
     const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
-    // Use weblogo.jpg from public folder
+    // Use weblogo.jpg from public folder (matches service worker)
     const iconUrl = `${baseUrl}/weblogo.jpg`;
     
     const messages = validTokens.map(token => ({
@@ -232,7 +275,8 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
       },
       data: {
         ...data,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        click_action: data.link || "/",
+        link: data.link || "/",
       },
       token: token,
       // Android specific options
@@ -251,9 +295,14 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
           badge: iconUrl,
           requireInteraction: false,
           title: `College360x: ${title}`,
+          body: body,
+          image: iconUrl,
         },
         fcmOptions: {
           link: data.link || "/",
+        },
+        headers: {
+          Urgency: "normal",
         },
       },
       // APNS (iOS) specific options
@@ -276,14 +325,69 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
 
     const response = await admin.messaging().sendEach(messages);
     console.log(`✅ [NOTIFICATION] Successfully sent ${response.successCount} out of ${validTokens.length} notifications`);
+    
+    // Handle failed tokens - remove invalid/unregistered tokens from database
     if (response.failureCount > 0) {
       console.warn(`⚠️ [NOTIFICATION] Failed to send ${response.failureCount} notifications`);
-      // Log failed tokens for debugging
+      
+      // Collect tokens that need to be removed
+      const tokensToRemove = [];
       response.responses.forEach((resp, idx) => {
         if (!resp.success) {
-          console.error(`❌ [NOTIFICATION] Failed token ${idx + 1}:`, resp.error?.message || resp.error);
+          const errorCode = resp.error?.code || resp.error?.message || '';
+          const token = validTokens[idx];
+          console.error(`❌ [NOTIFICATION] Failed token ${idx + 1}:`, errorCode);
+          
+          // Remove tokens that are invalid or unregistered
+          if (errorCode === 'messaging/invalid-registration-token' || 
+              errorCode === 'messaging/registration-token-not-registered' ||
+              errorCode === 'NotRegistered' ||
+              errorCode?.includes('not-registered') ||
+              errorCode?.includes('invalid-registration')) {
+            tokensToRemove.push(token);
+            console.log(`🗑️ [NOTIFICATION] Marking token for removal: ${token.substring(0, 20)}...`);
+          }
         }
       });
+      
+      // Remove invalid tokens from database
+      if (tokensToRemove.length > 0) {
+        try {
+          const { removeDeviceTokenByToken } = await import("./fcmTokenManager.js");
+          const StudentDetails = (await import("../models/student/studentDetails.js")).default;
+          const FacultyDetails = (await import("../models/faculty/facultyDetails.js")).default;
+          const HOD = (await import("../models/Hod/hodDetails.js")).default;
+          
+          // Remove tokens from all user types
+          for (const token of tokensToRemove) {
+            // Find and remove from students
+            const student = await StudentDetails.findOne({ "fcmDevices.token": token });
+            if (student) {
+              await removeDeviceTokenByToken(student, token);
+              await student.save();
+              console.log(`✅ [NOTIFICATION] Removed invalid token from student ${student.studentid}`);
+            }
+            
+            // Find and remove from faculty
+            const faculty = await FacultyDetails.findOne({ "fcmDevices.token": token });
+            if (faculty) {
+              await removeDeviceTokenByToken(faculty, token);
+              await faculty.save();
+              console.log(`✅ [NOTIFICATION] Removed invalid token from faculty ${faculty.facultyid}`);
+            }
+            
+            // Find and remove from HOD
+            const hod = await HOD.findOne({ "fcmDevices.token": token });
+            if (hod) {
+              await removeDeviceTokenByToken(hod, token);
+              await hod.save();
+              console.log(`✅ [NOTIFICATION] Removed invalid token from HOD ${hod.hodId}`);
+            }
+          }
+        } catch (cleanupError) {
+          console.error("❌ [NOTIFICATION] Error removing invalid tokens:", cleanupError);
+        }
+      }
     }
     
     return {
@@ -334,13 +438,28 @@ export const sendWelcomeNotification = async (fcmToken, userName, userType = "us
 export const sendNotificationToStudent = async (studentid, title, body, data = {}) => {
   try {
     const StudentDetails = (await import("../models/student/studentDetails.js")).default;
-    const student = await StudentDetails.findOne({ studentid }).select("fcmToken").lean();
+    const student = await StudentDetails.findOne({ studentid }).select("fcmDevices").lean();
     
-    if (!student || !student.fcmToken) {
-      return { success: false, error: "Student not found or no FCM token" };
+    if (!student) {
+      return { success: false, error: "Student not found" };
     }
     
-    return await sendNotification(student.fcmToken, title, body, data);
+    // Get all tokens from fcmDevices only
+    const tokens = (student.fcmDevices || [])
+      .map(device => device.token)
+      .filter(token => token && token.trim() !== "");
+    
+    if (tokens.length === 0) {
+      console.log(`⚠️ [NOTIFICATION] No FCM tokens found for student ${studentid}`);
+      return { success: false, error: "No FCM tokens found" };
+    }
+    
+    // If single token, use sendNotification; if multiple, use sendBatchNotifications
+    if (tokens.length === 1) {
+      return await sendNotification(tokens[0], title, body, data);
+    } else {
+      return await sendBatchNotifications(tokens, title, body, data);
+    }
   } catch (error) {
     console.error("Error sending notification to student:", error);
     return { success: false, error: error.message };
@@ -358,13 +477,28 @@ export const sendNotificationToStudent = async (studentid, title, body, data = {
 export const sendNotificationToFaculty = async (facultyid, title, body, data = {}) => {
   try {
     const FacultyDetails = (await import("../models/faculty/facultyDetails.js")).default;
-    const faculty = await FacultyDetails.findOne({ facultyid }).select("fcmToken").lean();
+    const faculty = await FacultyDetails.findOne({ facultyid }).select("fcmDevices").lean();
     
-    if (!faculty || !faculty.fcmToken) {
-      return { success: false, error: "Faculty not found or no FCM token" };
+    if (!faculty) {
+      return { success: false, error: "Faculty not found" };
     }
     
-    return await sendNotification(faculty.fcmToken, title, body, data);
+    // Get all tokens from fcmDevices only
+    const tokens = (faculty.fcmDevices || [])
+      .map(device => device.token)
+      .filter(token => token && token.trim() !== "");
+    
+    if (tokens.length === 0) {
+      console.log(`⚠️ [NOTIFICATION] No FCM tokens found for faculty ${facultyid}`);
+      return { success: false, error: "No FCM tokens found" };
+    }
+    
+    // If single token, use sendNotification; if multiple, use sendBatchNotifications
+    if (tokens.length === 1) {
+      return await sendNotification(tokens[0], title, body, data);
+    } else {
+      return await sendBatchNotifications(tokens, title, body, data);
+    }
   } catch (error) {
     console.error("Error sending notification to faculty:", error);
     return { success: false, error: error.message };
@@ -382,13 +516,28 @@ export const sendNotificationToFaculty = async (facultyid, title, body, data = {
 export const sendNotificationToHOD = async (hodId, title, body, data = {}) => {
   try {
     const HOD = (await import("../models/Hod/hodDetails.js")).default;
-    const hod = await HOD.findOne({ hodId }).select("fcmToken").lean();
+    const hod = await HOD.findOne({ hodId }).select("fcmDevices").lean();
     
-    if (!hod || !hod.fcmToken) {
-      return { success: false, error: "HOD not found or no FCM token" };
+    if (!hod) {
+      return { success: false, error: "HOD not found" };
     }
     
-    return await sendNotification(hod.fcmToken, title, body, data);
+    // Get all tokens from fcmDevices only
+    const tokens = (hod.fcmDevices || [])
+      .map(device => device.token)
+      .filter(token => token && token.trim() !== "");
+    
+    if (tokens.length === 0) {
+      console.log(`⚠️ [NOTIFICATION] No FCM tokens found for HOD ${hodId}`);
+      return { success: false, error: "No FCM tokens found" };
+    }
+    
+    // If single token, use sendNotification; if multiple, use sendBatchNotifications
+    if (tokens.length === 1) {
+      return await sendNotification(tokens[0], title, body, data);
+    } else {
+      return await sendBatchNotifications(tokens, title, body, data);
+    }
   } catch (error) {
     console.error("Error sending notification to HOD:", error);
     return { success: false, error: error.message };
@@ -405,22 +554,44 @@ export const sendNotificationToHOD = async (hodId, title, body, data = {}) => {
  */
 export const sendNotificationsToStudents = async (studentIds, title, body, data = {}) => {
   try {
+    if (!studentIds || (Array.isArray(studentIds) && studentIds.length === 0)) {
+      console.warn("⚠️ [NOTIFICATION] No student IDs provided");
+      return { success: false, error: "No student IDs provided" };
+    }
+
     const StudentDetails = (await import("../models/student/studentDetails.js")).default;
-    const students = await StudentDetails.find({ studentid: { $in: studentIds } })
-      .select("fcmToken")
+    const studentIdArray = Array.isArray(studentIds) ? studentIds : [studentIds];
+    
+    const students = await StudentDetails.find({ studentid: { $in: studentIdArray } })
+      .select("studentid fcmDevices")
       .lean();
     
-    const fcmTokens = students
-      .map(s => s.fcmToken)
-      .filter(token => token && token.trim() !== "");
+    if (students.length === 0) {
+      console.warn(`⚠️ [NOTIFICATION] No students found for IDs: ${studentIdArray.join(", ")}`);
+      return { success: false, error: "No students found" };
+    }
+    
+    // Collect all tokens from all students (multi-device support)
+    const fcmTokens = [];
+    students.forEach(student => {
+      if (student.fcmDevices && student.fcmDevices.length > 0) {
+        student.fcmDevices.forEach(device => {
+          if (device.token && device.token.trim() !== "") {
+            fcmTokens.push(device.token);
+          }
+        });
+      }
+    });
     
     if (fcmTokens.length === 0) {
+      console.warn(`⚠️ [NOTIFICATION] No valid FCM tokens found for ${students.length} student(s)`);
       return { success: false, error: "No valid FCM tokens found" };
     }
     
+    console.log(`📤 [NOTIFICATION] Sending to ${fcmTokens.length} device(s) from ${students.length} student(s)`);
     return await sendBatchNotifications(fcmTokens, title, body, data);
   } catch (error) {
-    console.error("Error sending notifications to students:", error);
+    console.error("❌ [NOTIFICATION] Error sending notifications to students:", error);
     return { success: false, error: error.message };
   }
 };

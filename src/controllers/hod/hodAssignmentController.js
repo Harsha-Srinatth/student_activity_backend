@@ -260,7 +260,7 @@ export const assignFacultyToSection = async (req, res) => {
         message: `Your faculty has been updated`,
         facultyId,
         section
-      });
+      }, 'student'); // Role parameter required for array of userIds
       
       // FCM push notifications to students
       try {
@@ -439,12 +439,17 @@ export const getHODInfo = async (req, res) => {
     }
 
     const hod = await HOD.findOne({ hodId: hodId })
-      .select("hodId fullname email collegeId department")
+      .select("hodId fullname email collegeId department fcmDevices")
       .lean();
 
     if (!hod) {
       return res.status(404).json({ message: "HOD not found" });
     }
+
+    // Return first token from fcmDevices (or null if no tokens)
+    const fcmToken = (hod.fcmDevices && hod.fcmDevices.length > 0) 
+      ? hod.fcmDevices[0].token 
+      : null;
 
     return res.status(200).json({
       success: true,
@@ -456,6 +461,7 @@ export const getHODInfo = async (req, res) => {
           fullname: hod.fullname,
           email: hod.email,
           collegeId: hod.collegeId,
+          fcmToken: fcmToken,
           department: {
             name: hod.department,
             code: hod.department.toUpperCase().substring(0, 3),

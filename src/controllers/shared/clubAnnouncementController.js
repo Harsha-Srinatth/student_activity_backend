@@ -167,7 +167,7 @@ export const createClubAnnouncement = async (req, res) => {
           collegeId,
           semester: { $in: targetSemesters },
         })
-          .select("studentid fcmToken semester")
+          .select("studentid fcmDevices semester")
           .lean();
         
         targetYearsText = ` (years: ${targetYearsArray.join(", ")})`;
@@ -175,17 +175,24 @@ export const createClubAnnouncement = async (req, res) => {
       } else {
         // No targetYears specified - send to ALL students in the college
         students = await StudentDetails.find({ collegeId })
-          .select("studentid fcmToken semester")
+          .select("studentid fcmDevices semester")
           .lean();
         
         targetYearsText = " (all students)";
         console.log(`🔔 [Club Announcement] No target years specified - sending to ALL students in college`);
       }
 
-      // Filter students by FCM token
-      const studentTokens = students
-        .map(s => s.fcmToken)
-        .filter(token => token && token.trim() !== "");
+      // Collect all FCM tokens from all devices
+      const studentTokens = [];
+      students.forEach(student => {
+        if (student.fcmDevices && student.fcmDevices.length > 0) {
+          student.fcmDevices.forEach(device => {
+            if (device.token && device.token.trim() !== "") {
+              studentTokens.push(device.token);
+            }
+          });
+        }
+      });
 
       if (studentTokens.length > 0) {
         await sendBatchNotifications(
@@ -427,13 +434,20 @@ export const updateClubAnnouncement = async (req, res) => {
           collegeId,
           semester: { $in: targetSemesters },
         })
-          .select("studentid fcmToken semester")
+          .select("studentid fcmDevices semester")
           .lean();
 
-        // Filter students by FCM token
-        const studentTokens = students
-          .map(s => s.fcmToken)
-          .filter(token => token && token.trim() !== "");
+        // Collect all FCM tokens from all devices
+        const studentTokens = [];
+        students.forEach(student => {
+          if (student.fcmDevices && student.fcmDevices.length > 0) {
+            student.fcmDevices.forEach(device => {
+              if (device.token && device.token.trim() !== "") {
+                studentTokens.push(device.token);
+              }
+            });
+          }
+        });
 
         if (studentTokens.length > 0) {
           await sendBatchNotifications(
