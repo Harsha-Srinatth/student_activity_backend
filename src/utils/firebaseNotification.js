@@ -110,8 +110,8 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
     // For production, this should be your deployed frontend URL
     // For web push, icon needs to be a publicly accessible URL
     const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
-    // Use weblogo.jpg from public folder (matches service worker)
-    const iconUrl = `${baseUrl}/weblogo.jpg`;
+    // Use college-web-logo.jpeg from public folder (main app logo)
+    const iconUrl = `${baseUrl}/college-web-logo.jpeg`;
     
     const message = {
       notification: {
@@ -265,8 +265,8 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
     // Get base URL from environment or use default
     // For web push, icon needs to be a publicly accessible URL
     const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
-    // Use weblogo.jpg from public folder (matches service worker)
-    const iconUrl = `${baseUrl}/weblogo.jpg`;
+    // Use college-web-logo.jpeg from public folder (main app logo)
+    const iconUrl = `${baseUrl}/college-web-logo.jpeg`;
     
     const messages = validTokens.map(token => ({
       notification: {
