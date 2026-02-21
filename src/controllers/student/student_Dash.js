@@ -200,10 +200,11 @@ const student_Dashboard_Details = async (req, res) => {
         programName: student.programName,
         collegeName: student.collegeName,
         profileImage: student.image?.url ? { url: student.image.url } : null,
-        // Return first token from fcmDevices (or null if no tokens)
+        // Return first token (backward compat) and full list for per-device UI
         fcmToken: (student.fcmDevices && student.fcmDevices.length > 0) 
           ? student.fcmDevices[0].token 
           : null,
+        fcmDevices: student.fcmDevices || [],
         faculty: student.facultyid ? {
           facultyid: student.facultyid,
           fullname: facultyNameMap.get(student.facultyid) || undefined,

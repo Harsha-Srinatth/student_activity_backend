@@ -61,10 +61,11 @@ const faculty_Dashboard_Details = async (req, res) => {
         approvalsCount: faculty.approvalsCount,
         sectionsAssigned: faculty.sectionsAssigned || [], // Include assigned sections
         subjects: faculty.subjects || [], // Include subjects
-        // Return first token from fcmDevices (or null if no tokens)
+        // Return first token (backward compat) and full list for per-device UI
         fcmToken: (faculty.fcmDevices && faculty.fcmDevices.length > 0) 
           ? faculty.fcmDevices[0].token 
           : null,
+        fcmDevices: faculty.fcmDevices || [],
       },
       stats: dashboardStats,
       lastUpdated: new Date()
