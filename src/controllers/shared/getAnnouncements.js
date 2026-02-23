@@ -57,7 +57,7 @@ export const getAnnouncementsForUser = async (req, res) => {
     const announcements = await Announcement.find(finalQuery)
       .sort({ createdAt: -1 })
       .limit(50)
-      .select("title content priority createdAt targetAudience expiresAt isActive image clubId targetYears eventDate createdBy")
+      .select("title content priority createdAt targetAudience expiresAt isActive image clubId targetYears eventDate createdBy participationOrRegistrationLink")
       .lean();
 
     // Get unique clubIds from announcements
