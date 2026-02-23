@@ -11,7 +11,7 @@ import { sendNotificationsToStudents, sendNotificationToHOD, sendBatchNotificati
 export const createAnnouncement = async (req, res) => {
   try {
     const { hodId, collegeId } = req.user;
-    const { title, content, targetAudience, priority, expiresAt } = req.body;
+    const { title, content, targetAudience, expiresAt } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ message: "Title and content are required" });
@@ -55,7 +55,6 @@ export const createAnnouncement = async (req, res) => {
       content,
       collegeId,
       targetAudience: targetAudienceArray,
-      priority: priority || "medium",
       createdBy: {
         hodId: hodId,
         creatorRole: "hod",
@@ -102,7 +101,6 @@ export const createAnnouncement = async (req, res) => {
       _id: announcement._id,
       title: announcement.title,
       content: announcement.content,
-      priority: announcement.priority,
       image: announcement.image,
       targetAudience: announcement.targetAudience,
       createdAt: announcement.createdAt,
@@ -154,7 +152,6 @@ export const createAnnouncement = async (req, res) => {
               {
                 type: "announcement",
                 announcementId: announcement._id.toString(),
-                priority: priority || "medium",
                 timestamp: new Date().toISOString(),
                 link: "/student/announcements",
               }
@@ -196,7 +193,6 @@ export const createAnnouncement = async (req, res) => {
               {
                 type: "announcement",
                 announcementId: announcement._id.toString(),
-                priority: priority || "medium",
                 timestamp: new Date().toISOString(),
               }
             );
@@ -338,7 +334,7 @@ export const updateAnnouncement = async (req, res) => {
   try {
     const { collegeId } = req.user;
     const { id } = req.params;
-    const { title, content, targetAudience, priority, isActive, expiresAt } = req.body;
+    const { title, content, targetAudience, isActive, expiresAt } = req.body;
 
     const announcement = await Announcement.findOne({
       _id: id,
@@ -373,7 +369,6 @@ export const updateAnnouncement = async (req, res) => {
       }
     }
     
-    if (priority) announcement.priority = priority;
     if (isActive !== undefined) announcement.isActive = isActive;
     if (expiresAt !== undefined) {
       announcement.expiresAt = expiresAt ? new Date(expiresAt) : null;
@@ -386,7 +381,6 @@ export const updateAnnouncement = async (req, res) => {
       _id: announcement._id,
       title: announcement.title,
       content: announcement.content,
-      priority: announcement.priority,
       image: announcement.image,
       targetAudience: announcement.targetAudience,
       createdAt: announcement.createdAt,

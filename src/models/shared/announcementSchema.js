@@ -22,11 +22,6 @@ const AnnouncementSchema = new mongoose.Schema(
       default: ["both"],
       required: true
     },
-    priority: {
-      type: String,
-      enum: ["low", "medium", "high"],
-      default: "medium"
-    },
     createdBy: {
       // Admin fields (for admin-created announcements)
       adminId: {
@@ -80,6 +75,12 @@ const AnnouncementSchema = new mongoose.Schema(
     eventDate: {
       type: Date,
       default: null
+    },
+    // Club events: participation or registration link (optional)
+    participationOrRegistrationLink: {
+      type: String,
+      default: null,
+      trim: true
     }
   },
   { timestamps: true }

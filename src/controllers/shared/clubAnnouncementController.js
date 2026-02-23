@@ -12,7 +12,7 @@ import { sendBatchNotifications } from "../../utils/firebaseNotification.js";
 export const createClubAnnouncement = async (req, res) => {
   try {
     const { collegeId, role, facultyid, studentid } = req.user;
-    const { clubId, title, content, eventDate, targetYears, priority } = req.body;
+    const { clubId, title, content, eventDate, targetYears, participationOrRegistrationLink } = req.body;
 
     if (!clubId || !title || !content) {
       return res.status(400).json({ 
@@ -96,7 +96,6 @@ export const createClubAnnouncement = async (req, res) => {
       content,
       collegeId,
       targetAudience: ["student"], // Club announcements are for students
-      priority: priority || "medium",
       createdBy: {
         adminId: creatorId,
         adminName: creatorName,
@@ -108,6 +107,7 @@ export const createClubAnnouncement = async (req, res) => {
       clubId: club.clubId,
       targetYears: targetYearsArray,
       eventDate: eventDate ? new Date(eventDate) : null,
+      participationOrRegistrationLink: participationOrRegistrationLink || null,
     });
 
     await announcement.save();
@@ -117,7 +117,6 @@ export const createClubAnnouncement = async (req, res) => {
       _id: announcement._id,
       title: announcement.title,
       content: announcement.content,
-      priority: announcement.priority,
       image: announcement.image,
       targetAudience: announcement.targetAudience,
       clubId: announcement.clubId,
@@ -125,6 +124,7 @@ export const createClubAnnouncement = async (req, res) => {
       clubImage: club.imageUrl,
       targetYears: announcement.targetYears,
       eventDate: announcement.eventDate,
+      participationOrRegistrationLink: announcement.participationOrRegistrationLink,
       createdAt: announcement.createdAt,
       updatedAt: announcement.updatedAt,
       expiresAt: announcement.expiresAt,
@@ -205,7 +205,6 @@ export const createClubAnnouncement = async (req, res) => {
             clubId: club.clubId,
             clubName: club.clubName,
             targetYears: targetYearsArray.length > 0 ? targetYearsArray.join(",") : "all",
-            priority: priority || "medium",
             timestamp: new Date().toISOString(),
           }
         );
@@ -332,7 +331,7 @@ export const updateClubAnnouncement = async (req, res) => {
   try {
     const { collegeId, role, facultyid, studentid } = req.user;
     const { id } = req.params;
-    const { title, content, eventDate, targetYears, priority } = req.body;
+    const { title, content, eventDate, targetYears, participationOrRegistrationLink } = req.body;
 
     // Find announcement
     const announcement = await Announcement.findOne({
@@ -373,7 +372,9 @@ export const updateClubAnnouncement = async (req, res) => {
     // Update fields
     if (title) announcement.title = title;
     if (content !== undefined) announcement.content = content;
-    if (priority) announcement.priority = priority;
+    if (participationOrRegistrationLink !== undefined) {
+      announcement.participationOrRegistrationLink = participationOrRegistrationLink || null;
+    }
     if (eventDate !== undefined) {
       announcement.eventDate = eventDate ? new Date(eventDate) : null;
     }
@@ -398,13 +399,13 @@ export const updateClubAnnouncement = async (req, res) => {
         _id: announcement._id,
         title: announcement.title,
         content: announcement.content,
-        priority: announcement.priority,
         image: announcement.image,
         clubId: announcement.clubId,
         clubName: club.clubName,
         clubImage: club.imageUrl,
         targetYears: announcement.targetYears,
         eventDate: announcement.eventDate,
+        participationOrRegistrationLink: announcement.participationOrRegistrationLink,
         updatedAt: announcement.updatedAt,
       },
     });
@@ -460,7 +461,6 @@ export const updateClubAnnouncement = async (req, res) => {
               clubId: club.clubId,
               clubName: club.clubName,
               targetYears: announcement.targetYears.join(","),
-              priority: announcement.priority || "medium",
               timestamp: new Date().toISOString(),
             }
           );
