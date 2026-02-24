@@ -86,7 +86,22 @@ export const handleConnection = (socket, io) => {
       console.log(`💬 Socket ${socket.id} left doubt room: doubt:${doubtId}`);
     }
   });
-  
+
+  // ---- Skill Exchange Course: join/leave room for real-time content ----
+  socket.on('course:joinCourse', (courseId) => {
+    if (courseId) {
+      socket.join(`course:${courseId}`);
+      console.log(`📖 Socket ${socket.id} joined course room: course:${courseId}`);
+    }
+  });
+
+  socket.on('course:leaveCourse', (courseId) => {
+    if (courseId) {
+      socket.leave(`course:${courseId}`);
+      console.log(`📖 Socket ${socket.id} left course room: course:${courseId}`);
+    }
+  });
+
   // Handle disconnection
   socket.on('disconnect', (reason) => {
     console.log(`Socket disconnected: ${socket.id} (Reason: ${reason})`);

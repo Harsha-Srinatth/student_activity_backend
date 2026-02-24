@@ -1,12 +1,15 @@
 import { emitToUser, emitAttendanceUpdateToStudents } from '../socket/socketHandlers.js';
-import { 
-  emitStudentUpdate, 
-  emitFacultyUpdate, 
-  emitHODUpdate, 
+import {
+  emitStudentUpdate,
+  emitFacultyUpdate,
+  emitHODUpdate,
   emitNotification,
   emitToUsersIfConnected,
-  emitToRoleIfConnected
+  emitToRoleIfConnected,
 } from './realtimeUpdate.js';
+
+// Re-export for controllers that need to emit course/approval updates
+export { emitStudentUpdate, emitFacultyUpdate };
 import socketManager from '../socket/socketManager.js';
 import StudentDetails from '../models/student/studentDetails.js';
 

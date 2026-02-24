@@ -17,6 +17,18 @@ import getStudentAttendance from "../controllers/student/student_attendance.js";
 import { getClubsJoined, enrollInClub } from "../controllers/student/clubEnrollment.js";
 import { getAllClubs, getClubMembers } from "../controllers/student/clubController.js";
 import { studentReqForLeave, studentLeaveRequests, getSpecificLeaveReqDetails } from '../controllers/student/leaveReq.js';
+import {
+  createCourse,
+  joinCourse,
+  getMyCourses,
+  getJoinedCourses,
+  getDiscoverableCourses,
+  getCourseById,
+  addCourseContent,
+  deleteCourseContent,
+} from "../controllers/student/courseController.js";
+import uploadCourse from "../middlewares/uploadCourse.js";
+import uploadCourseContent from "../middlewares/uploadCourseContent.js";
 
 const router = express.Router();
 
@@ -73,6 +85,16 @@ router.get("/clubs/my", getMyClubs);
 router.post("/clubs/announcements", uploadAnnouncement.single("image"), createClubAnnouncement);
 router.put("/clubs/announcements/:id", uploadAnnouncement.single("image"), updateClubAnnouncement);
 router.delete("/clubs/announcements/:id", deleteClubAnnouncement);
+
+// Skill Exchange / Courses
+router.post("/courses", uploadCourse.single("coverImage"), createCourse);
+router.post("/courses/join", joinCourse);
+router.get("/courses/my", getMyCourses);
+router.get("/courses/joined", getJoinedCourses);
+router.get("/courses/discover", getDiscoverableCourses);
+router.get("/courses/:courseId", getCourseById);
+router.post("/courses/:courseId/content", uploadCourseContent.single("file"), addCourseContent);
+router.delete("/courses/:courseId/content/:contentId", deleteCourseContent);
 
 export default router;
 

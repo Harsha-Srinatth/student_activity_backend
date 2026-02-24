@@ -210,7 +210,8 @@ const StudentDetailSchema = new mongoose.Schema(
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
     facultyid: {type: String, required: true},
-    
+
+    teachingPoints: { type: Number, default: 0 },    // Teaching Points
     // Firebase Cloud Messaging Tokens for push notifications (multi-device support)
     // Array of device objects: { deviceId, token, deviceName, lastUsed }
     fcmDevices: [{

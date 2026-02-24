@@ -24,6 +24,11 @@ import {
 import { searchFaculty } from "../controllers/shared/facultyController.js";
 import { createClubAnnouncement, getMyClubs, updateClubAnnouncement, deleteClubAnnouncement } from "../controllers/shared/clubAnnouncementController.js";
 import uploadAnnouncement from "../middlewares/uploadAnnouncement.js";
+import {
+  getPendingCourses,
+  approveOrRejectCourse,
+  completeCourseForStudent,
+} from "../controllers/faculty/courseApprovalController.js";
 
 const router = express.Router();
 
@@ -96,6 +101,11 @@ router.get("/clubs/my", requireRole("faculty"), getMyClubs);
 router.post("/clubs/announcements", requireRole("faculty"), uploadAnnouncement.single("image"), createClubAnnouncement);
 router.put("/clubs/announcements/:id", requireRole("faculty"), uploadAnnouncement.single("image"), updateClubAnnouncement);
 router.delete("/clubs/announcements/:id", requireRole("faculty"), deleteClubAnnouncement);
+
+// Skill Exchange - Course Approvals
+router.get("/courses/pending", requireRole("faculty"), getPendingCourses);
+router.post("/courses/:courseId/approve", requireRole("faculty"), approveOrRejectCourse);
+router.post("/courses/:courseId/complete/:studentId", requireRole("faculty"), completeCourseForStudent);
 
 export default router;
 

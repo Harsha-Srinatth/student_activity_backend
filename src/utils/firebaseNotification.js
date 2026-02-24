@@ -596,3 +596,47 @@ export const sendNotificationsToStudents = async (studentIds, title, body, data 
   }
 };
 
+/**
+ * Send notifications to all faculty in a college (e.g. new course pending approval)
+ * @param {string} collegeId - College ID
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body
+ * @param {object} data - Additional data payload (optional)
+ * @returns {Promise<object>} - Result of the batch notification send
+ */
+export const sendNotificationsToFacultyByCollege = async (collegeId, title, body, data = {}) => {
+  try {
+    if (!collegeId) {
+      console.warn("⚠️ [NOTIFICATION] No collegeId provided for faculty notifications");
+      return { success: false, error: "No collegeId provided" };
+    }
+
+    const FacultyDetails = (await import("../models/faculty/facultyDetails.js")).default;
+    const facultyList = await FacultyDetails.find({ collegeId })
+      .select("facultyid fcmDevices")
+      .lean();
+
+    const fcmTokens = [];
+    facultyList.forEach((faculty) => {
+      if (faculty.fcmDevices && faculty.fcmDevices.length > 0) {
+        faculty.fcmDevices.forEach((device) => {
+          if (device.token && device.token.trim() !== "") {
+            fcmTokens.push(device.token);
+          }
+        });
+      }
+    });
+
+    if (fcmTokens.length === 0) {
+      console.warn(`⚠️ [NOTIFICATION] No FCM tokens found for faculty in college ${collegeId}`);
+      return { success: false, error: "No valid FCM tokens found" };
+    }
+
+    console.log(`📤 [NOTIFICATION] Sending to ${fcmTokens.length} faculty device(s) in college ${collegeId}`);
+    return await sendBatchNotifications(fcmTokens, title, body, data);
+  } catch (error) {
+    console.error("❌ [NOTIFICATION] Error sending notifications to faculty by college:", error);
+    return { success: false, error: error.message };
+  }
+};
+
