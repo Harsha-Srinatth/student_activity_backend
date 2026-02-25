@@ -39,6 +39,9 @@ const CourseSchema = new mongoose.Schema(
     joinedStudents: [{ studentId: { type: String, required: true }, joinedAt: { type: Date, default: Date.now } }],
     content: [CourseContentSchema],
     isPaid: { type: Boolean, default: false },
+    joinAmount: { type: Number, default: 0, min: 0 }, // Amount (e.g. in rupees) to join when isPaid is true
+    creatorName: { type: String },
+    creatorContact: { type: String },
     completedBy: [{ studentId: { type: String }, completedAt: { type: Date }, facultyFeedback: { type: String }, pointsAwarded: { type: Number } }],
   },
   { timestamps: true }

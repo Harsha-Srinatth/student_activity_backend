@@ -33,7 +33,7 @@ async function populateCreatorInfo(courses) {
 export const createCourse = async (req, res) => {
   try {
     const { studentid, collegeId } = req.user;
-    const { title, description, category, durationDays } = req.body;
+    const { title, description, category, durationDays, paid, joinAmount } = req.body;
 
     if (!title || !description || !category || !durationDays) {
       return res.status(400).json({ message: "Title, description, category, and duration are required" });
@@ -41,6 +41,25 @@ export const createCourse = async (req, res) => {
 
     const student = await StudentDetails.findOne({ studentid }).select("fullname mobileno teachingPoints facultyid").lean();
     if (!student) return res.status(404).json({ message: "Student not found" });
+
+    const teachingPoints = (student.teachingPoints ?? 0);
+    const canSetPaidCourse = teachingPoints >= 250;
+
+    const isPaid = paid === true || paid === "true";
+    const amount = isPaid ? (parseFloat(joinAmount) || 0) : 0;
+
+    // Students with < 250 points can only create free courses; completing courses awards 50 points
+    if (!canSetPaidCourse && (isPaid || amount > 0)) {
+      return res.status(403).json({
+        message: "You need 250 teaching points to set a join amount. Create a free course and earn 50 points when students complete it.",
+        teachingPoints,
+        required: 250,
+      });
+    }
+
+    if (isPaid && amount <= 0) {
+      return res.status(400).json({ message: "Please enter a valid amount to join the course when the course is paid" });
+    }
 
     const coverImage = req.file
       ? { url: req.file.path || req.file.secure_url, publicId: req.file.filename || req.file.public_id }
@@ -57,6 +76,8 @@ export const createCourse = async (req, res) => {
       durationDays: parseInt(durationDays, 10) || 1,
       coverImage,
       status: "pending",
+      isPaid: isPaid,
+      joinAmount: amount,
     });
 
     await course.save();
@@ -123,8 +144,9 @@ export const joinCourse = async (req, res) => {
     }
 
     const now = new Date();
-    const fiveDaysAfterApproval = course.approvedAt
-      ? new Date(course.approvedAt.getTime() + 5 * 24 * 60 * 60 * 1000)
+    const approvedAt = course.approvalDetails?.approvedAt || course.approvedAt;
+    const fiveDaysAfterApproval = approvedAt
+      ? new Date((approvedAt.getTime ? approvedAt.getTime() : new Date(approvedAt).getTime()) + 5 * 24 * 60 * 60 * 1000)
       : null;
 
     if (fiveDaysAfterApproval && now > fiveDaysAfterApproval) {
@@ -156,6 +178,31 @@ export const joinCourse = async (req, res) => {
     });
   } catch (error) {
     console.error("Join course error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const TEACHING_POINTS_REQUIRED = 250;
+
+/**
+ * Get current student's teaching points (for course creation eligibility)
+ */
+export const getTeachingPoints = async (req, res) => {
+  try {
+    const { studentid } = req.user;
+    const student = await StudentDetails.findOne({ studentid }).select("teachingPoints").lean();
+    const teachingPoints = student?.teachingPoints ?? 0;
+    return res.status(200).json({
+      success: true,
+      data: {
+        teachingPoints,
+        required: TEACHING_POINTS_REQUIRED,
+        canCreateCourse: true, // everyone can create free courses
+        canSetPaidCourse: teachingPoints >= TEACHING_POINTS_REQUIRED, // 250+ to set join amount
+      },
+    });
+  } catch (error) {
+    console.error("Get teaching points error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -245,6 +292,12 @@ export const getCourseById = async (req, res) => {
 
     if (!isCreator && course.status !== "approved") {
       return res.status(403).json({ message: "Course is not yet approved" });
+    }
+
+    // Ensure creator contact is present (for older docs or if not stored)
+    if (!course.creatorContact || !course.creatorName) {
+      const enriched = await populateCreatorInfo(course);
+      return res.status(200).json({ success: true, data: enriched });
     }
 
     return res.status(200).json({ success: true, data: course });

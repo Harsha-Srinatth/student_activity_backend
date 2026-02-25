@@ -5,6 +5,7 @@ const GroupSchema = new mongoose.Schema({
     collegeId: { type: String, required: true },
     groupId: { type: String, required: true, unique: true, default: uuidv4() },
     studentId: { type: String, required: true, index: true },
+    isPaid: { type: Boolean, default: false },
     groupName: { type: String, required: true },
     groupTopic: { type: String, required: true },
     groupDuration: { type: Number, required: true },
