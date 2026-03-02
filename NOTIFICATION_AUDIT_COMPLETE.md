@@ -67,13 +67,6 @@ This document provides a complete verification of push notifications (FCM) for a
 - **Push Notification:** ✅ `sendNotificationToStudent` - **IMPLEMENTED**
 - **Status:** ✅ **COMPLETE**
 
-### 8. **Faculty Verifies Achievement** (`verify_achievements.js`)
-- **Operation:** Faculty verifies student achievement
-- **Notifies:** Student (achievement owner) + Faculty (self-confirmation)
-- **Socket:** ✅ `emitFacultyStatsUpdate`, `emitFacultyPendingApprovalsUpdate`, `emitUserNotification`
-- **Push Notification:** ✅ `sendNotificationToStudent` + `sendNotificationToFaculty` - **IMPLEMENTED**
-- **Status:** ✅ **COMPLETE**
-
 ---
 
 ## ✅ HOD OPERATIONS
@@ -176,7 +169,6 @@ if (targetYearsArray.length > 0) {
 - [x] Process Leave Request → Notifies Student + Faculty ✅
 - [x] Submit Attendance → Notifies Students ✅
 - [x] Update Marks → Notifies Student ✅
-- [x] Verify Achievement → Notifies Student + Faculty ✅
 
 ### HOD Operations:
 - [x] Create/Update/Delete Announcement → Notifies Students + Faculty + HOD ✅

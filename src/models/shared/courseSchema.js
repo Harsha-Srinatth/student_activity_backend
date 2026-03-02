@@ -37,12 +37,26 @@ const CourseSchema = new mongoose.Schema(
       reason: { type: String },
     },
     joinedStudents: [{ studentId: { type: String, required: true }, joinedAt: { type: Date, default: Date.now } }],
+    // Student feedback/reviews submitted after course duration ends (before faculty awards points)
+    studentReviews: [{
+      studentId: { type: String, required: true },
+      rating: { type: Number, min: 1, max: 5 }, // optional 1–5 stars
+      reviewText: { type: String, maxlength: 1000 },
+      submittedAt: { type: Date, default: Date.now },
+    }],
     content: [CourseContentSchema],
     isPaid: { type: Boolean, default: false },
     joinAmount: { type: Number, default: 0, min: 0 }, // Amount (e.g. in rupees) to join when isPaid is true
     creatorName: { type: String },
     creatorContact: { type: String },
-    completedBy: [{ studentId: { type: String }, completedAt: { type: Date }, facultyFeedback: { type: String }, pointsAwarded: { type: Number } }],
+    groupId: { type: String, index: true }, // creator shares this so others can join by group ID
+    groupStatus: { type: String, enum: ["on-going", "completed"], default: "on-going" }, // on-going until faculty completes all joined students
+    completedBy: [{
+      studentId: { type: String, required: true },
+      completedAt: { type: Date, default: Date.now },
+      facultyFeedback: { type: String },
+      pointsAwarded: { type: Number, min: 0, max: 50, default: 50 },
+    }],
   },
   { timestamps: true }
 );
@@ -50,6 +64,7 @@ const CourseSchema = new mongoose.Schema(
 CourseSchema.index({ collegeId: 1, status: 1 });
 CourseSchema.index({ creatorId: 1 });
 CourseSchema.index({ courseId: 1 });
+CourseSchema.index({ status: 1, "approvalDetails.approvedAt": -1 }); // for getCoursesForCompletion
 
 const Course = mongoose.model("Course", CourseSchema);
 export default Course;

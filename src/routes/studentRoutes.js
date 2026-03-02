@@ -24,6 +24,8 @@ import {
   getJoinedCourses,
   getDiscoverableCourses,
   getCourseById,
+  getTeachingPoints,
+  submitCourseFeedback,
   addCourseContent,
   deleteCourseContent,
 } from "../controllers/student/courseController.js";
@@ -68,6 +70,7 @@ import {
   createDoubt,
   getDoubtById,
   createReply,
+  deleteReply,
   deleteDoubt,
   toggleSolvedDoubt,
 } from "../controllers/student/doubtController.js";
@@ -76,6 +79,7 @@ router.get("/doubts", getCollegeDoubts);
 router.post("/doubts", createDoubt);
 router.get("/doubts/:doubtId", getDoubtById);
 router.post("/doubts/:doubtId/replies", createReply);
+router.delete("/doubts/:doubtId/replies/:replyId", deleteReply);
 router.delete("/doubts/:doubtId", deleteDoubt);
 router.patch("/doubts/:doubtId/solve", toggleSolvedDoubt);
 
@@ -87,12 +91,14 @@ router.put("/clubs/announcements/:id", uploadAnnouncement.single("image"), updat
 router.delete("/clubs/announcements/:id", deleteClubAnnouncement);
 
 // Skill Exchange / Courses
+router.get("/courses/teaching-points", getTeachingPoints);
 router.post("/courses", uploadCourse.single("coverImage"), createCourse);
 router.post("/courses/join", joinCourse);
 router.get("/courses/my", getMyCourses);
 router.get("/courses/joined", getJoinedCourses);
 router.get("/courses/discover", getDiscoverableCourses);
 router.get("/courses/:courseId", getCourseById);
+router.post("/courses/:courseId/feedback", submitCourseFeedback);
 router.post("/courses/:courseId/content", uploadCourseContent.single("file"), addCourseContent);
 router.delete("/courses/:courseId/content/:contentId", deleteCourseContent);
 

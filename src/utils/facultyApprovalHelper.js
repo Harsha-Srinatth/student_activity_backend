@@ -64,9 +64,9 @@ export const saveApprovalToFaculty = async (facultyId, approvalData) => {
 
 /**
  * Build approval data object matching ApprovalActionSchema
- * Schema fields: studentid, type, description, status, approvedOn, imageUrl, message
+ * Schema fields: studentid, type, description, status, approvedOn, imageUrl, message, points
  */
-export const buildApprovalData = async (student, achievement, type, status, facultyName, message = '') => {
+export const buildApprovalData = async (student, achievement, type, status, facultyName, message = '', points = 0) => {
   // Get imageUrl based on achievement type
   let imageUrl = null;
   if (achievement) {
@@ -104,7 +104,8 @@ export const buildApprovalData = async (student, achievement, type, status, facu
     status: status === 'approved' ? 'approved' : 'rejected',
     approvedOn: new Date(),
     imageUrl: imageUrl || undefined,
-    message: message || undefined
+    message: message || undefined,
+    points: typeof points === 'number' && points >= 0 ? points : 0
   };
 };
 

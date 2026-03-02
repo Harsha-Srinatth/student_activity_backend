@@ -2,14 +2,49 @@ import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import { saveApprovalToFaculty, buildApprovalData, getFacultyName } from "../../utils/facultyApprovalHelper.js";
 import { calculateFacultyStats } from "./faculty_Dashboard_Details.js";
-import { 
-  emitApprovalUpdate, 
-  emitStudentCountsUpdate, 
-  emitFacultyPendingApprovalsUpdate,
+import { getMaxValues, computeWeightedPoints, updateMaxValuesIfNeeded } from "../../services/studentMaxValues.js";
+import {
+  emitApprovalUpdate,
   emitFacultyStatsUpdate,
   emitUserNotification,
   emitStudentDashboardDataUpdate
 } from "../../utils/socketEmitter.js";
+
+// Map approval type to student schema array name
+const TYPE_TO_ARRAY = {
+  certificate: 'certifications',
+  workshop: 'workshops',
+  club: 'clubsJoined',
+  internship: 'internships',
+  project: 'projects',
+  other: 'others',
+};
+
+/** Find achievement by achievementId in the correct array; return the subdoc or null */
+const findAchievementById = (student, type, achievementId) => {
+  const arrayName = TYPE_TO_ARRAY[type];
+  if (!arrayName || !student[arrayName]) return null;
+  const idStr = String(achievementId);
+  const item = student[arrayName].find(doc => doc._id && String(doc._id) === idStr);
+  return item || null;
+};
+
+/** Apply approved points to student: co-curricular → coCurricularPoints, extra-curricular → extraCurricularPoints; project type also adds to projectsPoints */
+const applyPointsToStudent = (student, type, categoryType, points) => {
+  if (!points || points <= 0) return;
+  const p = Number(points);
+  if (type === 'project') {
+    student.projectsPoints = (student.projectsPoints || 0) + p;
+  }
+  if (categoryType === 'co-curricular') {
+    student.coCurricularPoints = (student.coCurricularPoints || 0) + p;
+  } else if (categoryType === 'extra-curricular') {
+    student.extraCurricularPoints = (student.extraCurricularPoints || 0) + p;
+  } else {
+    // academic or other: add to co-curricular as fallback
+    student.coCurricularPoints = (student.coCurricularPoints || 0) + p;
+  }
+};
 
 // Get all students with pending approvals for the current faculty
 const getPendingApprovals = async (req, res) => {
@@ -41,12 +76,16 @@ const getPendingApprovals = async (req, res) => {
         return 'pending'; // default to pending for unknown statuses
       };
 
+      const toId = (doc) => (doc._id != null ? String(doc._id) : null);
+
       // Certifications
       (student.certifications || []).forEach((cert) => {
         const status = normalizeStatus(cert.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(cert),
             type: 'certificate',
+            certificateType: cert.type,
             description: cert.title,
             status: 'pending',
             imageUrl: cert.imageUrl,
@@ -60,7 +99,9 @@ const getPendingApprovals = async (req, res) => {
         const status = normalizeStatus(workshop.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(workshop),
             type: 'workshop',
+            workshopType: workshop.type,
             description: workshop.title,
             status: 'pending',
             imageUrl: workshop.certificateUrl || workshop.imageUrl,
@@ -74,7 +115,9 @@ const getPendingApprovals = async (req, res) => {
         const status = normalizeStatus(club.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(club),
             type: 'club',
+            clubType: club.type,
             description: club.title || club.clubName,
             status: 'pending',
             imageUrl: club.imageUrl,
@@ -88,7 +131,9 @@ const getPendingApprovals = async (req, res) => {
         const status = normalizeStatus(internship.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(internship),
             type: 'internship',
+            internshipType: internship.type,
             description: `${internship.organization} - ${internship.role}`,
             status: 'pending',
             imageUrl: internship.imageUrl,
@@ -102,7 +147,9 @@ const getPendingApprovals = async (req, res) => {
         const status = normalizeStatus(project.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(project),
             type: 'project',
+            projectType: project.type,
             description: project.title,
             status: 'pending',
             imageUrl: project.imageUrl,
@@ -116,7 +163,9 @@ const getPendingApprovals = async (req, res) => {
         const status = normalizeStatus(other.verification);
         if (status === 'pending') {
           pendingApprovals.push({
+            achievementId: toId(other),
             type: 'other',
+            otherType: other.type,
             description: other.title,
             status: 'pending',
             imageUrl: other.imageUrl,
@@ -146,127 +195,81 @@ const getPendingApprovals = async (req, res) => {
   }
 };
 
-// Approve or reject a specific submission
+// Approve or reject a specific submission (use achievementId to identify the item)
 const handleApproval = async (req, res) => {
   try {
     const { studentid } = req.params;
-    const { action, message, type, description } = req.body;
+    const { action, message, type, achievementId, points } = req.body;
     const currentFacultyId = req.user.facultyid;
 
     if (!currentFacultyId) {
       return res.status(401).json({ error: 'Faculty ID not found in token' });
     }
-
     if (!action || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject"' });
     }
-
-    if (!type || !description) {
-      return res.status(400).json({ message: 'Type and description are required.' });
+    if (!type || !TYPE_TO_ARRAY[type]) {
+      return res.status(400).json({ message: 'Valid type is required (certificate, workshop, club, internship, project, other).' });
+    }
+    if (!achievementId) {
+      return res.status(400).json({ message: 'achievementId is required to identify the submission.' });
+    }
+    // Points: required on approve, 0–50; ignored on reject
+    const pointsVal = action === 'approve'
+      ? (typeof points === 'number' ? points : Number(points))
+      : 0;
+    if (action === 'approve' && (Number.isNaN(pointsVal) || pointsVal < 0 || pointsVal > 50)) {
+      return res.status(400).json({ message: 'Points must be a number between 0 and 50 when approving.' });
     }
 
-    const student = await StudentDetails.findOne({ 
+    const student = await StudentDetails.findOne({
       studentid,
-      facultyid: currentFacultyId // Ensure student belongs to current faculty
+      facultyid: currentFacultyId,
     });
     if (!student) {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
     }
 
-    // Get faculty name
-    const facultyName = await getFacultyName(currentFacultyId);
+    const achievement = findAchievementById(student, type, achievementId);
+    if (!achievement) {
+      return res.status(404).json({ message: 'Submission not found. Check achievementId and type.' });
+    }
+    if (achievement.verification?.status && achievement.verification.status !== 'pending') {
+      return res.status(400).json({ message: 'This submission is already processed.' });
+    }
 
-    // Find and update the achievement by type and description
+    const facultyName = await getFacultyName(currentFacultyId);
     const status = action === 'approve' ? 'approved' : 'rejected';
     const verificationData = {
       verifiedBy: facultyName,
       date: new Date(),
-      status: status,
-      remarks: message || ''
+      status,
+      remarks: message || '',
+      points: action === 'approve' ? pointsVal : 0,
     };
 
-    // Helper to find and update achievement
-    // IMPORTANT: Find the PENDING one, not just the first match (there may be duplicates)
-    const findAndUpdateAchievement = () => {
-      if (type === 'certificate') {  
-        // Find the FIRST pending certificate with matching title
-        const idx = student.certifications.findIndex(c => 
-          c.title === description && 
-          (!c.verification || c.verification.status === 'pending')
-        );
-        
-        if (idx !== -1) {
-          const cert = student.certifications[idx];
-          const currentStatus = cert.verification?.status;
-          student.certifications[idx].verification = verificationData;
-          return student.certifications[idx];
-        } else {
-          // Check if certificate exists but is already processed
-          const existingIdx = student.certifications.findIndex(c => c.title === description);
-          if (existingIdx !== -1) {
-            const existingStatus = student.certifications[existingIdx].verification?.status;
-          } else {
-          }
-        }
-      } else if (type === 'workshop') {
-        // Find the FIRST pending workshop with matching title
-        const idx = student.workshops.findIndex(w => 
-          w.title === description && 
-          (!w.verification || w.verification.status === 'pending')
-        );
-        if (idx !== -1) {
-          student.workshops[idx].verification = verificationData;
-          return student.workshops[idx];
-        }
-      } else if (type === 'club') {
-        // Find the FIRST pending club with matching title
-        const idx = student.clubsJoined.findIndex(c => 
-          (c.title === description || c.clubName === description) && 
-          (!c.verification || c.verification.status === 'pending')
-        );
-        if (idx !== -1) {
-          student.clubsJoined[idx].verification = verificationData;
-          return student.clubsJoined[idx];
-        }
-      } else if (type === 'internship') {
-        // Find the FIRST pending internship with matching description
-        const idx = student.internships.findIndex(i => 
-          `${i.organization} - ${i.role}` === description && 
-          (!i.verification || i.verification.status === 'pending')
-        );
-        if (idx !== -1) {
-          student.internships[idx].verification = verificationData;
-          return student.internships[idx];
-        }
-      } else if (type === 'project') {
-        // Find the FIRST pending project with matching title
-        const idx = student.projects.findIndex(p => 
-          p.title === description && 
-          (!p.verification || p.verification.status === 'pending')
-        );
-        if (idx !== -1) {
-          student.projects[idx].verification = verificationData;
-          return student.projects[idx];
-        }
-      } else if (type === 'other') {
-        // Find the FIRST pending other achievement with matching title
-        const idx = student.others.findIndex(o => 
-          o.title === description && 
-          (!o.verification || o.verification.status === 'pending')
-        );
-        if (idx !== -1) {
-          student.others[idx].verification = verificationData;
-          return student.others[idx];
-        }
-      }
-      return null;
-    };
+    achievement.verification = verificationData;
 
-    const achievement = findAndUpdateAchievement();
-    if (!achievement) {
-      return res.status(404).json({ message: 'Pending approval not found or already processed' });
+    if (action === 'approve' && pointsVal > 0) {
+      const categoryType = achievement.type || 'co-curricular'; // co-curricular | extra-curricular | academic
+      applyPointsToStudent(student, type, categoryType, pointsVal);
     }
+
+    // Recompute weightedPoints when any of the 6 scoring fields change
+    try {
+      const maxValues = await getMaxValues();
+      student.weightedPoints = computeWeightedPoints(student, maxValues);
+    } catch (wpErr) {
+      console.error("Error recomputing weightedPoints:", wpErr);
+    }
+
     await student.save();
+
+    try {
+      await updateMaxValuesIfNeeded(student);
+    } catch (maxErr) {
+      console.error("Error updating max values cache:", maxErr);
+    }
     // Refresh student from database to ensure we have the latest data
     // This ensures counts are calculated from the saved state
     const refreshedStudent = await StudentDetails.findOne({ studentid })
@@ -280,23 +283,25 @@ const handleApproval = async (req, res) => {
     // Use refreshed student if available, otherwise use the saved student
     const studentForCounts = refreshedStudent || student.toObject();
 
-    // Save approval to faculty using shared helper
+    // Save approval to faculty using shared helper (includes points)
     try {
-      const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message);
+      const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message, pointsVal);
       await saveApprovalToFaculty(currentFacultyId, approvalData);
     } catch (facultyUpdateError) {
-      // Log error but don't fail the main operation - student is already saved
       console.error('Error updating faculty approvals:', facultyUpdateError.message);
     }
 
-    // Build approval response object for consistency
+    const description = type === 'internship'
+      ? `${achievement.organization} - ${achievement.role}`
+      : (achievement.title || achievement.clubName || '');
     const approvalResponse = {
-      type: type,
-      description: description,
+      type,
+      description,
       status: action === 'approve' ? 'approved' : 'rejected',
       reviewedOn: new Date(),
       reviewedBy: facultyName,
       message: message || '',
+      points: action === 'approve' ? pointsVal : 0,
       imageUrl: achievement?.imageUrl || achievement?.certificateUrl,
     };
 
@@ -389,12 +394,14 @@ const getStudentDetailsFrom = async (req, res) => {
     };
 
     const pendingApprovals = [];
+    const toId = (doc) => (doc._id != null ? String(doc._id) : null);
 
     // Certifications
     (student.certifications || []).forEach((cert) => {
       const status = normalizeStatus(cert.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(cert),
           type: 'certificate',
           description: cert.title,
           status: 'pending',
@@ -409,6 +416,7 @@ const getStudentDetailsFrom = async (req, res) => {
       const status = normalizeStatus(workshop.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(workshop),
           type: 'workshop',
           description: workshop.title,
           status: 'pending',
@@ -423,6 +431,7 @@ const getStudentDetailsFrom = async (req, res) => {
       const status = normalizeStatus(club.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(club),
           type: 'club',
           description: club.title || club.clubName,
           status: 'pending',
@@ -437,6 +446,7 @@ const getStudentDetailsFrom = async (req, res) => {
       const status = normalizeStatus(internship.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(internship),
           type: 'internship',
           description: `${internship.organization} - ${internship.role}`,
           status: 'pending',
@@ -451,6 +461,7 @@ const getStudentDetailsFrom = async (req, res) => {
       const status = normalizeStatus(project.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(project),
           type: 'project',
           description: project.title,
           status: 'pending',
@@ -465,6 +476,7 @@ const getStudentDetailsFrom = async (req, res) => {
       const status = normalizeStatus(other.verification);
       if (status === 'pending') {
         pendingApprovals.push({
+          achievementId: toId(other),
           type: 'other',
           description: other.title,
           status: 'pending',
@@ -484,28 +496,26 @@ const getStudentDetailsFrom = async (req, res) => {
   }
 };
 
-// Bulk approve/reject multiple submissions
+// Bulk approve/reject multiple submissions (each item: { type, achievementId, points? })
 const bulkApproval = async (req, res) => {
   try {
     const { studentid } = req.params;
-    const { approvals, action, message } = req.body; // approvals: [{type, description}, ...]
+    const { approvals, action, message } = req.body; // approvals: [{ type, achievementId, points? }, ...]
     const currentFacultyId = req.user.facultyid;
 
     if (!currentFacultyId) {
       return res.status(401).json({ error: 'Faculty ID not found in token' });
     }
-
     if (!action || !['approve', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action. Must be "approve" or "reject"' });
     }
-
     if (!Array.isArray(approvals) || approvals.length === 0) {
-      return res.status(400).json({ message: 'Approvals array is required. Each approval should have {type, description}' });
+      return res.status(400).json({ message: 'Approvals array is required. Each item should have { type, achievementId } and optionally points (0–50) when approving.' });
     }
 
-    const student = await StudentDetails.findOne({ 
+    const student = await StudentDetails.findOne({
       studentid,
-      facultyid: currentFacultyId // Ensure student belongs to current faculty
+      facultyid: currentFacultyId,
     });
     if (!student) {
       return res.status(404).json({ message: 'Student not found or not assigned to your faculty' });
@@ -513,71 +523,39 @@ const bulkApproval = async (req, res) => {
 
     const facultyName = await getFacultyName(currentFacultyId);
     const status = action === 'approve' ? 'approved' : 'rejected';
-    const verificationData = {
-      verifiedBy: facultyName,
-      date: new Date(),
-      status: status,
-      remarks: message || ''
-    };
-
     let updatedCount = 0;
     const approvalRecords = [];
 
-    // Helper to find and update achievement
-    const findAndUpdateAchievement = (type, description) => {
-      if (type === 'certificate') {
-        const idx = student.certifications.findIndex(c => c.title === description);
-        if (idx !== -1 && (!student.certifications[idx].verification || student.certifications[idx].verification.status === 'pending')) {
-          student.certifications[idx].verification = verificationData;
-          return student.certifications[idx];
-        }
-      } else if (type === 'workshop') {
-        const idx = student.workshops.findIndex(w => w.title === description);
-        if (idx !== -1 && (!student.workshops[idx].verification || student.workshops[idx].verification.status === 'pending')) {
-          student.workshops[idx].verification = verificationData;
-          return student.workshops[idx];
-        }
-      } else if (type === 'club') {
-        const idx = student.clubsJoined.findIndex(c => (c.title === description || c.clubName === description));
-        if (idx !== -1 && (!student.clubsJoined[idx].verification || student.clubsJoined[idx].verification.status === 'pending')) {
-          student.clubsJoined[idx].verification = verificationData;
-          return student.clubsJoined[idx];
-        }
-      } else if (type === 'internship') {
-        const idx = student.internships.findIndex(i => `${i.organization} - ${i.role}` === description);
-        if (idx !== -1 && (!student.internships[idx].verification || student.internships[idx].verification.status === 'pending')) {
-          student.internships[idx].verification = verificationData;
-          return student.internships[idx];
-        }
-      } else if (type === 'project') {
-        const idx = student.projects.findIndex(p => p.title === description);
-        if (idx !== -1 && (!student.projects[idx].verification || student.projects[idx].verification.status === 'pending')) {
-          student.projects[idx].verification = verificationData;
-          return student.projects[idx];
-        }
-      } else if (type === 'other') {
-        const idx = student.others.findIndex(o => o.title === description);
-        if (idx !== -1 && (!student.others[idx].verification || student.others[idx].verification.status === 'pending')) {
-          student.others[idx].verification = verificationData;
-          return student.others[idx];
-        }
+    for (const item of approvals) {
+      const { type, achievementId, points: itemPoints } = item;
+      if (!type || !achievementId || !TYPE_TO_ARRAY[type]) continue;
+
+      const achievement = findAchievementById(student, type, achievementId);
+      if (!achievement || (achievement.verification?.status && achievement.verification.status !== 'pending')) continue;
+
+      const pointsVal = action === 'approve'
+        ? Math.min(50, Math.max(0, Number(itemPoints) || 0))
+        : 0;
+
+      achievement.verification = {
+        verifiedBy: facultyName,
+        date: new Date(),
+        status,
+        remarks: message || '',
+        points: pointsVal,
+      };
+
+      if (action === 'approve' && pointsVal > 0) {
+        const categoryType = achievement.type || 'co-curricular';
+        applyPointsToStudent(student, type, categoryType, pointsVal);
       }
-      return null;
-    };
 
-    // Update multiple approvals
-    for (const { type, description } of approvals) {
-      if (!type || !description) continue;
-
-      const achievement = findAndUpdateAchievement(type, description);
-      if (achievement) {
-        updatedCount++;
-        try {
-          const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message);
-          approvalRecords.push(approvalData);
-        } catch (error) {
-          console.warn(`⚠️ Could not build approval data for ${type}: ${description}`, error.message);
-        }
+      updatedCount++;
+      try {
+        const approvalData = await buildApprovalData(student, achievement, type, status, facultyName, message, pointsVal);
+        approvalRecords.push(approvalData);
+      } catch (err) {
+        console.warn('Could not build approval data for', type, achievementId, err.message);
       }
     }
 

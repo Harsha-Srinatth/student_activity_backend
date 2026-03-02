@@ -221,6 +221,7 @@ export const getDoubtById = async (req, res) => {
     return res.status(200).json({
       doubt: populatedDoubt,
       replies: populatedReplies,
+      currentStudentId: studentId,
       pagination: {
         page,
         limit,
@@ -302,6 +303,59 @@ export const createReply = async (req, res) => {
   } catch (error) {
     console.error("Error creating reply:", error);
     return res.status(500).json({ message: "Failed to create reply" });
+  }
+};
+
+/**
+ * Delete a reply (only by creator)
+ * DELETE /student/doubts/:doubtId/replies/:replyId
+ */
+export const deleteReply = async (req, res) => {
+  try {
+    const studentId = req.user.studentId || req.user.studentid;
+    if (!studentId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { doubtId, replyId } = req.params;
+
+    const reply = await Reply.findById(replyId);
+    if (!reply) {
+      return res.status(404).json({ message: "Reply not found" });
+    }
+    if (reply.doubtId.toString() !== doubtId) {
+      return res.status(400).json({ message: "Reply does not belong to this doubt" });
+    }
+    if (reply.createdBy !== studentId) {
+      return res
+        .status(403)
+        .json({ message: "Only the author can delete this reply" });
+    }
+
+    const doubt = await Doubt.findById(doubtId);
+    if (!doubt) {
+      return res.status(404).json({ message: "Doubt not found" });
+    }
+
+    await Reply.findByIdAndDelete(replyId);
+    doubt.replyCount = Math.max(0, (doubt.replyCount || 1) - 1);
+    await doubt.save();
+
+    if (global.io) {
+      global.io.to(`doubt:${doubtId}`).emit("doubt:replyDelete", {
+        replyId,
+        doubtId,
+      });
+      global.io.to(`college:${doubt.collegeId}`).emit("doubt:replyDelete", {
+        replyId,
+        doubtId,
+      });
+    }
+
+    return res.status(200).json({ message: "Reply deleted", replyId });
+  } catch (error) {
+    console.error("Error deleting reply:", error);
+    return res.status(500).json({ message: "Failed to delete reply" });
   }
 };
 

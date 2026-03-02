@@ -25,6 +25,20 @@ import { getAllClubs, getClubMembers } from "../controllers/student/clubControll
 import { submitAttendance } from "../controllers/faculty/faculty_attendance.js";
 import { bulkUpsertMidMarks } from "../controllers/faculty/faculty_marks.js";
 import { studentReqForLeave, studentLeaveRequests, getSpecificLeaveReqDetails } from '../controllers/student/leaveReq.js';
+import { searchStudents } from "../controllers/student/student-profiles/searchStudents.js";
+import { getStudentProfileForView } from "../controllers/student/student-profiles/getStudentProfileForView.js";
+import { compareStudents } from "../controllers/student/student-profiles/compareStudents.js";
+import { getTopTenStudents } from "../controllers/student/student-profiles/getTopTenStudents.js";
+import { getWeeklyLeaderboard, getLeaderboardWeeks } from "../controllers/student/student-profiles/weeklyLeaderboard.js";
+
+// Shared: student search and profile view (student, faculty, hod – same college)
+router.get("/api/students/search", checkauth, searchStudents);
+router.get("/api/students/profile/:studentId", checkauth, getStudentProfileForView);
+router.post("/api/students/compare", checkauth, compareStudents);
+router.get("/api/students/top-ten", checkauth, getTopTenStudents);
+// Weekly leaderboard: snapshot for current/past week (more specific route first)
+router.get("/api/students/leaderboard/weeks", checkauth, getLeaderboardWeeks);
+router.get("/api/students/leaderboard", checkauth, getWeeklyLeaderboard);
 
 // Academic routes (shared between student and faculty)
 router.get("/api/curriculum", checkauth, getCurriculumBySemester);

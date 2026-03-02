@@ -3,6 +3,141 @@ import StudentDetails from "../../models/student/studentDetails.js";
 import { sendNotificationToStudent } from "../../utils/firebaseNotification.js";
 import { emitStudentUpdate } from "../../utils/socketEmitter.js";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Get approved courses whose duration has ended (approvedAt + durationDays <= now).
+ * Shown to faculty if either (1) the course creator is their assigned student, or
+ * (2) any joined-but-not-completed student is their assigned student. So the faculty
+ * who has the student that joined can see the course and award points when duration ends.
+ */
+export const getCoursesForCompletion = async (req, res) => {
+  try {
+    const { collegeId, facultyid } = req.user;
+
+    const myStudentIds = await StudentDetails.find({ collegeId, facultyid })
+      .select("studentid")
+      .lean()
+      .then((students) => students.map((s) => s.studentid));
+
+    if (myStudentIds.length === 0) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    // Courses where creator is our student OR any joined student is our student
+    const approvedCourses = await Course.find({
+      collegeId,
+      status: "approved",
+      "approvalDetails.approvedAt": { $exists: true, $ne: null },
+      $or: [
+        { creatorId: { $in: myStudentIds } },
+        { "joinedStudents.studentId": { $in: myStudentIds } },
+      ],
+    })
+      .sort({ "approvalDetails.approvedAt": -1 })
+      .lean();
+
+    const now = Date.now();
+    const reviewByStudent = (reviews, studentId) =>
+      (reviews || []).find((r) => r.studentId === studentId) || null;
+
+    const forCompletion = approvedCourses
+      .map((course) => {
+        const rawApprovedAt = course.approvalDetails?.approvedAt ?? course.approvedAt;
+        const approvedAt = rawApprovedAt ? new Date(rawApprovedAt).getTime() : null;
+        if (!approvedAt || !course.durationDays) return null;
+        const endTime = approvedAt + course.durationDays * MS_PER_DAY;
+        if (now < endTime) return null; // Duration not yet ended
+        const completedIds = new Set((course.completedBy || []).map((c) => c.studentId));
+        const allPending = (course.joinedStudents || []).filter(
+          (j) => !completedIds.has(j.studentId)
+        );
+        // Only include pending students that belong to this faculty
+        const pendingStudents = allPending.filter((j) => myStudentIds.includes(j.studentId));
+        if (pendingStudents.length === 0) return null;
+        const pendingCompletions = pendingStudents.map((j) => {
+          const review = reviewByStudent(course.studentReviews, j.studentId);
+          return {
+            studentId: j.studentId,
+            joinedAt: j.joinedAt,
+            rating: review?.rating,
+            reviewText: review?.reviewText,
+            submittedAt: review?.submittedAt,
+          };
+        });
+        return {
+          ...course,
+          endDate: new Date(endTime),
+          pendingCompletions,
+        };
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({ success: true, data: forCompletion });
+  } catch (error) {
+    console.error("Get courses for completion error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Get approved courses whose duration has ended and all joined students are completed.
+ * Faculty can view history of completed courses (no pending completions left).
+ * Includes courses where creator is their student OR any joined student is their student.
+ */
+export const getCompletedCourses = async (req, res) => {
+  try {
+    const { collegeId, facultyid } = req.user;
+
+    const myStudentIds = await StudentDetails.find({ collegeId, facultyid })
+      .select("studentid")
+      .lean()
+      .then((students) => students.map((s) => s.studentid));
+
+    if (myStudentIds.length === 0) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const approvedCourses = await Course.find({
+      collegeId,
+      status: "approved",
+      "approvalDetails.approvedAt": { $exists: true, $ne: null },
+      $or: [
+        { creatorId: { $in: myStudentIds } },
+        { "joinedStudents.studentId": { $in: myStudentIds } },
+      ],
+    })
+      .sort({ "approvalDetails.approvedAt": -1 })
+      .lean();
+
+    const now = Date.now();
+    const completed = approvedCourses
+      .map((course) => {
+        const rawApprovedAt = course.approvalDetails?.approvedAt ?? course.approvedAt;
+        const approvedAt = rawApprovedAt ? new Date(rawApprovedAt).getTime() : null;
+        if (!approvedAt || !course.durationDays) return null;
+        const endTime = approvedAt + course.durationDays * MS_PER_DAY;
+        if (now < endTime) return null; // Duration not yet ended
+        const completedIds = new Set((course.completedBy || []).map((c) => c.studentId));
+        const pendingCount = (course.joinedStudents || []).filter(
+          (j) => !completedIds.has(j.studentId)
+        ).length;
+        if (pendingCount > 0) return null; // Still has pending completions
+        return {
+          ...course,
+          endDate: new Date(endTime),
+          completedBy: course.completedBy || [],
+        };
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({ success: true, data: completed });
+  } catch (error) {
+    console.error("Get completed courses error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 /**
  * Get pending courses for approval (only courses created by students assigned to this faculty)
  */
@@ -67,7 +202,6 @@ export const approveOrRejectCourse = async (req, res) => {
         rejectedAt: null,
         reason: null,
       };
-      course.approvedAt = new Date();
     } else {
       course.status = "rejected";
       course.approvalDetails = {
@@ -111,13 +245,14 @@ export const approveOrRejectCourse = async (req, res) => {
 };
 
 /**
- * Mark course as completed for a student and award 50 Teaching Points
+ * Mark course as completed for a student and award Teaching Points (0–50).
+ * Only allowed after course duration has ended (approvedAt + durationDays <= now).
  */
 export const completeCourseForStudent = async (req, res) => {
   try {
     const { facultyid } = req.user;
     const { courseId, studentId } = req.params;
-    const { feedback } = req.body;
+    const { feedback, points: pointsBody } = req.body;
 
     const course = await Course.findOne({ courseId });
     if (!course) return res.status(404).json({ message: "Course not found" });
@@ -125,9 +260,26 @@ export const completeCourseForStudent = async (req, res) => {
     const creatorStudent = await StudentDetails.findOne({ studentid: course.creatorId })
       .select("facultyid")
       .lean();
-    if (!creatorStudent || creatorStudent.facultyid !== facultyid) {
+    const completedStudent = await StudentDetails.findOne({ studentid: studentId })
+      .select("facultyid")
+      .lean();
+    const isCreatorFaculty = creatorStudent?.facultyid === facultyid;
+    const isCompletedStudentFaculty = completedStudent?.facultyid === facultyid;
+    if (!isCreatorFaculty && !isCompletedStudentFaculty) {
       return res.status(403).json({
-        message: "Only the assigned faculty of the course creator can mark completion for this course",
+        message: "Only the faculty assigned to the course creator or to the student being completed can mark completion",
+      });
+    }
+
+    const rawApprovedAt = course.approvalDetails?.approvedAt ?? course.approvedAt;
+    const approvedAt = rawApprovedAt ? new Date(rawApprovedAt).getTime() : null;
+    if (!approvedAt || !course.durationDays) {
+      return res.status(400).json({ message: "Course approval or duration not set" });
+    }
+    const endTime = approvedAt + course.durationDays * MS_PER_DAY;
+    if (Date.now() < endTime) {
+      return res.status(400).json({
+        message: "Course duration has not ended yet. Complete students only after the course end date.",
       });
     }
 
@@ -137,25 +289,47 @@ export const completeCourseForStudent = async (req, res) => {
     const alreadyCompleted = course.completedBy?.some((c) => c.studentId === studentId);
     if (alreadyCompleted) return res.status(400).json({ message: "Student has already completed this course" });
 
-    const POINTS_PER_COURSE = 50;
+    const rawPoints = pointsBody != null ? Number(pointsBody) : 50;
+    const pointsAwarded = Number.isNaN(rawPoints)
+      ? 50
+      : Math.min(50, Math.max(0, Math.round(rawPoints)));
+
     course.completedBy = course.completedBy || [];
     course.completedBy.push({
       studentId,
       completedAt: new Date(),
       facultyFeedback: feedback || "",
-      pointsAwarded: POINTS_PER_COURSE,
+      pointsAwarded,
     });
     await course.save();
 
     await StudentDetails.findOneAndUpdate(
       { studentid: studentId },
-      { $inc: { teachingPoints: POINTS_PER_COURSE } }
+      { $inc: { teachingPoints: pointsAwarded } }
     );
+
+    // If all joined students are now completed, mark course groupStatus as completed
+    const joinedIds = (course.joinedStudents || []).map((j) => j.studentId);
+    const completedIds = new Set((course.completedBy || []).map((c) => c.studentId));
+    const allCompleted = joinedIds.length > 0 && joinedIds.every((id) => completedIds.has(id));
+    if (allCompleted) {
+      course.groupStatus = "completed";
+      await course.save();
+      try {
+        emitStudentUpdate(course.creatorId, "courses", {
+          type: "group_completed",
+          courseId: course.courseId,
+          groupStatus: "completed",
+        });
+      } catch (e) {
+        console.error("Emit group completed:", e);
+      }
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Course completed. 50 Teaching Points awarded.",
-      data: { studentId, pointsAwarded: POINTS_PER_COURSE },
+      message: `Course completed. ${pointsAwarded} Teaching Points awarded.`,
+      data: { studentId, pointsAwarded },
     });
   } catch (error) {
     console.error("Complete course error:", error);

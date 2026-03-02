@@ -20,7 +20,6 @@
 | **Process Leave Request** | Student + Faculty | ✅ Push Notification Implemented |
 | **Submit Attendance** | All Affected Students | ✅ Push Notification Implemented |
 | **Update Marks** | Student | ✅ Push Notification Implemented |
-| **Verify Achievement** | Student + Faculty | ✅ Push Notification Implemented |
 
 ---
 

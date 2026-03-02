@@ -11,6 +11,7 @@ const studentDocUpload = async (req, res) => {
   try {
     const {
       type,
+      achievementType: rawAchievementType,
       title,
       issuer,
       organizer,
@@ -30,6 +31,10 @@ const studentDocUpload = async (req, res) => {
       clubName,
       joinedOn,
     } = req.body;
+
+    // Category for points: co-curricular | extra-curricular | academic (default co-curricular)
+    const allowed = ["co-curricular", "extra-curricular", "academic"];
+    const achievementType = allowed.includes(rawAchievementType) ? rawAchievementType : "co-curricular";
 
     const studentid = req.user.studentid;
     const student = await StudentDetails.findOne({ studentid });
@@ -52,6 +57,7 @@ const studentDocUpload = async (req, res) => {
       }
       student.certifications.push({
         title,
+        type: achievementType,
         issuer,
         dateIssued: dateIssued || date,
         imageUrl: fileUrl,
@@ -63,6 +69,7 @@ const studentDocUpload = async (req, res) => {
       }
       student.workshops.push({
         title,
+        type: achievementType,
         organizer,
         date,
         certificateUrl: certificateUrl || fileUrl,
@@ -76,6 +83,7 @@ const studentDocUpload = async (req, res) => {
       student.clubsJoined.push({
         clubName,
         title,
+        type: achievementType,
         role: role || "member",
         joinedOn: joinedOn ? new Date(joinedOn) : new Date(),
         imageUrl: fileUrl,
@@ -88,6 +96,7 @@ const studentDocUpload = async (req, res) => {
       student.internships = student.internships || [];
       student.internships.push({
         organization,
+        type: achievementType,
         role,
         startDate,
         endDate,
@@ -103,6 +112,7 @@ const studentDocUpload = async (req, res) => {
       student.projects = student.projects || [];
       student.projects.push({
         title,
+        type: achievementType,
         outcome,
         technologies: technologies ? technologies.split(",").map(t => t.trim()).filter(t => t) : [],
         repoLink,
@@ -118,6 +128,7 @@ const studentDocUpload = async (req, res) => {
       student.others = student.others || [];
       student.others.push({
         title,
+        type: achievementType,
         outcome,
         description,
         imageUrl: fileUrl,

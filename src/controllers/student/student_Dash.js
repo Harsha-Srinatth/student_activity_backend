@@ -27,6 +27,7 @@ const student_Dashboard_Details = async (req, res) => {
       {
         $project: {
           // Student basic info
+          collegeId: 1,
           studentid: 1,
           fullname: 1,
           email: 1,
@@ -39,6 +40,12 @@ const student_Dashboard_Details = async (req, res) => {
           facultyid: 1,
           fcmDevices: 1,
           "image.url": 1,
+          teachingPoints: 1,
+          projectsPoints: 1,
+          problemSolvingRank: 1,
+          extraCurricularPoints: 1,
+          coCurricularPoints: 1,
+          weightedPoints: 1,
           collegeName: {
             $let: {
               vars: { firstCollege: { $arrayElemAt: ["$college", 0] } },
@@ -187,6 +194,29 @@ const student_Dashboard_Details = async (req, res) => {
       allApprovals.filter(a => a.status === "approved").slice(0, 6)
     );
 
+    // Top 10 students by weighted points (same college)
+    let topTenStudents = [];
+    const collegeId = student.collegeId;
+    if (collegeId) {
+      const top = await StudentDetails.find({ collegeId })
+        .sort({ weightedPoints: -1 })
+        .limit(10)
+        .select("studentid fullname programName image.url teachingPoints projectsPoints problemSolvingRank extraCurricularPoints coCurricularPoints weightedPoints")
+        .lean();
+      topTenStudents = top.map((s) => ({
+        studentid: s.studentid,
+        fullname: s.fullname,
+        programName: s.programName,
+        image: s.image,
+        teachingPoints: s.teachingPoints ?? 0,
+        projectsPoints: s.projectsPoints ?? 0,
+        problemSolvingRank: s.problemSolvingRank ?? 0,
+        extraCurricularPoints: s.extraCurricularPoints ?? 0,
+        coCurricularPoints: s.coCurricularPoints ?? 0,
+        weightedPoints: s.weightedPoints ?? 0,
+      }));
+    }
+
     return res.status(200).json({
       student: {
         studentid: student.studentid,
@@ -215,6 +245,12 @@ const student_Dashboard_Details = async (req, res) => {
         workshopsCount: student.workshopsCount || 0,
         clubsJoinedCount: student.clubsJoinedCount || 0,
         projectsCount: student.projectsCount || 0,
+        teachingPoints: student.teachingPoints || 0,
+        projectsPoints: student.projectsPoints || 0,
+        problemSolvingRank: student.problemSolvingRank || 0,
+        extraCurricularPoints: student.extraCurricularPoints || 0,
+        coCurricularPoints: student.coCurricularPoints || 0,
+        weightedPoints: student.weightedPoints || 0,
         approvedCount: student.approvedCount || 0,
         rejectedCount: student.rejectedCount || 0,
         pendingCount: student.pendingCount || 0,
@@ -222,6 +258,7 @@ const student_Dashboard_Details = async (req, res) => {
       pendingApprovals: latestPendingApprovals,
       rejectedApprovals: latestRejectedApprovals,
       approvedApprovals: latestApprovedApprovals,
+      topTenStudents,
     });
   } catch (error) {
     console.error("Error fetching student dashboard details:", error);

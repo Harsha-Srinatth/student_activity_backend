@@ -11,6 +11,7 @@ const VerificationSchema = new mongoose.Schema(
       default: "pending",
     },
     remarks: { type: String }, // Additional remarks from faculty
+    points: { type: Number, default: 0, min: 0, max: 50 }, // Points awarded on approval (0–50)
   },
   { _id: false }
 );
@@ -78,6 +79,7 @@ const ClubEnrollmentSchema = new mongoose.Schema(
 const CertificationSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     issuer: { type: String },
     dateIssued: { type: Date },
     imageUrl: { type: String },
@@ -89,6 +91,7 @@ const CertificationSchema = new mongoose.Schema(
 const WorkshopSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     organizer: { type: String },
     date: { type: Date },
     certificateUrl: { type: String },
@@ -102,6 +105,7 @@ const ClubSchema = new mongoose.Schema(
   {
     clubName: { type: String, required: true },
     title: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     role: { type: String, default: "member" },
     joinedOn: { type: Date, default: Date.now },
     imageUrl: { type: String },
@@ -112,6 +116,7 @@ const ClubSchema = new mongoose.Schema(
 const InternshipSchema = new mongoose.Schema(
   {
     organization: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     role: { type: String, required: true },
     startDate: { type: Date },
     endDate: { type: Date },
@@ -127,6 +132,7 @@ const InternshipSchema = new mongoose.Schema(
 const ProjectSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     outcome: { type: String },
     technologies: [String],
     repoLink: { type: String },
@@ -141,6 +147,7 @@ const ProjectSchema = new mongoose.Schema(
 const OtherSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    type: { type: String, enum: ["co-curricular", "extra-curricular", "academic"], default: "co-curricular" },
     outcome: { type: String },
     description: { type: String },
     imageUrl: { type: String },
@@ -210,8 +217,15 @@ const StudentDetailSchema = new mongoose.Schema(
     semester: { type: String },
     dateofjoin: { type: Date, required: true },
     facultyid: {type: String, required: true},
-
-    teachingPoints: { type: Number, default: 0 },    // Teaching Points
+    // Points and Ranks
+    sgpa: { type: Number, default: 0 }, // SGPA
+    cgpa: { type: Number, default: 0 }, // CGPA
+    teachingPoints: { type: Number, default: 0 }, // Teaching Points
+    projectsPoints: { type: Number, default: 0 }, // Projects Points
+    problemSolvingRank: { type: Number, default: 0 }, // Problem Solving Rank
+    extraCurricularPoints: { type: Number, default: 0 }, // Extra Curricular Points
+    coCurricularPoints: { type: Number, default: 0 }, // Co-Curricular Points
+    weightedPoints: { type: Number, default: 0 }, // Weighted Points
     // Firebase Cloud Messaging Tokens for push notifications (multi-device support)
     // Array of device objects: { deviceId, token, deviceName, lastUsed }
     fcmDevices: [{

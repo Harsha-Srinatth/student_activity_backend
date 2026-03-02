@@ -8,7 +8,6 @@ import faculty_Dashboard_Details from "../controllers/faculty/faculty_Dashboard_
 import AddProfileF from "../controllers/faculty/AddProfileF.js";
 import updateFacultySettings from "../controllers/faculty/update_settings.js";
 import { getPendingApprovals, handleApproval, getStudentDetailsFrom, bulkApproval } from "../controllers/faculty/faculty_approve.js";
-import { verifyAchievement, getStudentAchievementsForReview, bulkVerifyAchievements, backfillStudentVerifications } from "../controllers/faculty/verify_achievements.js";
 import { getFacultyActivities, getFacultyMetrics } from "../controllers/faculty/faculty_activities.js";
 import { getStudentsByFaculty, getStudentCountByFaculty, getStudentDetails, getAllFaculty } from "../controllers/faculty/faculty_students.js";
 import { searchStudents } from "../controllers/faculty/searchStudents.js";
@@ -26,6 +25,8 @@ import { createClubAnnouncement, getMyClubs, updateClubAnnouncement, deleteClubA
 import uploadAnnouncement from "../middlewares/uploadAnnouncement.js";
 import {
   getPendingCourses,
+  getCoursesForCompletion,
+  getCompletedCourses,
   approveOrRejectCourse,
   completeCourseForStudent,
 } from "../controllers/faculty/courseApprovalController.js";
@@ -79,12 +80,6 @@ router.post("/approve/:studentid", requireRole("faculty"), handleApproval);
 router.post("/approve/:studentid/:approvalId", requireRole("faculty"), handleApproval);
 router.post("/approve/:studentid/:approvalId/:extra", requireRole("faculty"), handleApproval);
 
-// Achievement Verification
-router.get("/student/:studentid/achievements", requireRole("faculty"), getStudentAchievementsForReview);
-router.post("/student/:studentid/verify/:achievementType/:achievementId", requireRole("faculty"), verifyAchievement);
-router.post("/student/:studentid/bulk-verify", requireRole("faculty"), bulkVerifyAchievements);
-router.post("/student/:studentid/backfill-verifications", requireRole("faculty"), backfillStudentVerifications);
-
 // Academic Management
 router.post("/attendance", requireRole("faculty"), submitAttendance);
 router.get("/curriculum", getCurriculumBySemester);
@@ -104,6 +99,8 @@ router.delete("/clubs/announcements/:id", requireRole("faculty"), deleteClubAnno
 
 // Skill Exchange - Course Approvals
 router.get("/courses/pending", requireRole("faculty"), getPendingCourses);
+router.get("/courses/for-completion", requireRole("faculty"), getCoursesForCompletion);
+router.get("/courses/completed", requireRole("faculty"), getCompletedCourses);
 router.post("/courses/:courseId/approve", requireRole("faculty"), approveOrRejectCourse);
 router.post("/courses/:courseId/complete/:studentId", requireRole("faculty"), completeCourseForStudent);
 

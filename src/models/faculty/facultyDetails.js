@@ -68,6 +68,7 @@ const ApprovalActionSchema = new mongoose.Schema(
     approvedOn: { type: Date, default: Date.now, index: true },
     imageUrl: { type: String },
     message: { type: String, maxlength: 500 },
+    points: { type: Number, default: 0, min: 0, max: 50 }, // Points awarded (0–50); used for student coCurricularPoints/extraCurricularPoints/projectsPoints
   },
   { _id: false }
 );
