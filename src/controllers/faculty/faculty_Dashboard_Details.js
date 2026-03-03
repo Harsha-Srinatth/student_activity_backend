@@ -2,6 +2,11 @@ import StudentDetails from "../../models/student/studentDetails.js";
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
 import College from "../../models/shared/collegeSchema.js";
 
+/** Escape special regex characters in a string for safe use in RegExp */
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const faculty_Dashboard_Details = async (req, res) => {
   try {
     console.log('📊 Faculty Dashboard Details endpoint hit:', {
@@ -32,12 +37,20 @@ const faculty_Dashboard_Details = async (req, res) => {
       return res.status(404).json({ error: 'Faculty not found' });
     }
 
-    // Get college name from collegeId
+    // Get college name from collegeId (exact match, then case-insensitive)
     let collegeName = null;
-    if (faculty.collegeId) {
-      const college = await College.findOne({ collegeId: faculty.collegeId })
+    const collegeIdTrimmed = faculty.collegeId && String(faculty.collegeId).trim();
+    if (collegeIdTrimmed) {
+      let college = await College.findOne({ collegeId: collegeIdTrimmed })
         .select('collegeName')
         .lean();
+      if (!college) {
+        college = await College.findOne({
+          collegeId: { $regex: `^${escapeRegex(collegeIdTrimmed)}$`, $options: "i" },
+        })
+          .select("collegeName")
+          .lean();
+      }
       collegeName = college?.collegeName || null;
     }
 
@@ -49,7 +62,8 @@ const faculty_Dashboard_Details = async (req, res) => {
         facultyid: faculty.facultyid,
         fullname: faculty.fullname,
         collegeId: faculty.collegeId,
-        collegeName: collegeName, // Get college name from collegeId
+        collegeName: collegeName,
+        institution: collegeName, // Alias for frontend profile/settings
         dept: faculty.dept,
         designation: faculty.designation,
         email: faculty.email,

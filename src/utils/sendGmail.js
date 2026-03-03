@@ -1,20 +1,23 @@
 import { transporter } from "./smtpTransporter.js";
 
-/** Only send emails when notifications are enabled (SEND_EMAILS=true or NOTIFICATIONS_ENABLED=true). Default: disabled. */
+/** Send emails when SMTP is configured. Set SEND_EMAILS=false to disable (e.g. when notifications are off). */
 const isEmailSendingEnabled = () => {
   const v = (process.env.SEND_EMAILS || process.env.NOTIFICATIONS_ENABLED || "").toLowerCase();
-  return v === "true" || v === "1" || v === "yes";
+  if (v === "false" || v === "0" || v === "no") return false;
+  return true;
 };
 
 export const sendEmail = async (to, subject, html) => {
   if (!isEmailSendingEnabled()) {
     if (process.env.NODE_ENV !== "production") {
-      console.log(`📧 Email skipped - notifications disabled (set SEND_EMAILS=true to enable). Would send to: ${to}`);
+      console.log(`📧 Email skipped - SEND_EMAILS is disabled. Would send to: ${to}`);
     }
     return;
   }
   if (!transporter) {
-    console.warn(`⚠️  Email sending skipped - SMTP not configured. Would send to: ${to}`);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`⚠️  Email skipped - set EMAIL_USER and EMAIL_PASS in .env to send welcome emails. Would send to: ${to}`);
+    }
     return;
   }
 

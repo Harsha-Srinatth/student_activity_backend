@@ -56,7 +56,17 @@ const hodSchema = Joi.object({
 
 export const enqueueFacultyRegistration = async (req, res) => {
   try {
-    const { error, value } = facultySchema.validate(req.body, { stripUnknown: true });
+    const body = { ...req.body };
+    if (body.subjects !== undefined) {
+      if (Array.isArray(body.subjects)) {
+        body.subjects = body.subjects.map((s) => (typeof s === "string" ? s : String(s)).trim()).filter(Boolean);
+      } else if (typeof body.subjects === "string" && body.subjects.trim()) {
+        body.subjects = [body.subjects.trim()];
+      } else {
+        body.subjects = [];
+      }
+    }
+    const { error, value } = facultySchema.validate(body, { stripUnknown: true });
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
     }
