@@ -5,10 +5,8 @@ import FacultyDetails from "../models/faculty/facultyDetails.js";
 import StudentDetails from "../models/student/studentDetails.js";
 import HOD from "../models/Hod/hodDetails.js";
 import { sendEmail } from "../utils/sendGmail.js";
-import { sendWelcomeNotification } from "../utils/firebaseNotification.js";
 
-
-// Validation schema
+// Validation schema (dateofjoin: accept ISO string or YYYY-MM-DD from HTML date input)
 const facultySchema = Joi.object({
   facultyid: Joi.string().trim().required(),
   collegeId: Joi.string().trim().required(),
@@ -18,8 +16,11 @@ const facultySchema = Joi.object({
   email: Joi.string().email().required(),
   mobile: Joi.string().pattern(/^[0-9+ -]{7,20}$/).optional().allow(""),
   password: Joi.string().min(8).required(),
-  dateofjoin: Joi.date().iso().required(),
-  subjects: Joi.array().items(Joi.string().trim()).min(1).optional().default([]),
+  dateofjoin: Joi.alternatives().try(Joi.date().iso(), Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)).required(),
+  subjects: Joi.array().items(Joi.string().trim()).min(1).required().messages({
+    "array.min": "At least one subject is required.",
+    "any.required": "At least one subject is required."
+  }),
   // fcmToken removed - use fcmTokenData in settings endpoint after login
 });
 
@@ -63,7 +64,7 @@ export const enqueueFacultyRegistration = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(value.password, 12);
 
-    // Create faculty document
+    // Create faculty document (ensure dateofjoin is a Date for MongoDB)
     const facultyDoc = {
       facultyid: value.facultyid,
       collegeId: value.collegeId,
@@ -71,34 +72,28 @@ export const enqueueFacultyRegistration = async (req, res) => {
       username: value.username,
       dept: value.dept,
       email: value.email,
-      mobile: value.mobile,
+      mobile: value.mobile || "",
       password: hashedPassword,
-      dateofjoin: value.dateofjoin,
-      subjects: value.subjects || [],
+      dateofjoin: value.dateofjoin ? new Date(value.dateofjoin) : new Date(),
+      subjects: Array.isArray(value.subjects) ? value.subjects : [],
       // fcmToken removed - users should register tokens via settings endpoint after login
     };
 
     // Save to database
     await FacultyDetails.create(facultyDoc);
-    
-    // Send welcome email
-    try {
-      await sendEmail(
-        facultyDoc.email,
-        "Welcome to College360x 🎉",
-        `
+
+    // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
+    sendEmail(
+      facultyDoc.email,
+      "Welcome to College360x 🎉",
+      `
           <h2>Hello ${facultyDoc.fullname},</h2>
           <p>Your registration was successful!</p>
           <p>We're excited to have you onboard 🚀</p>
         `
-      );
-    } catch (err) {
-      console.error("Email sending error:", err);
-    }
+    ).catch((err) => console.error("Email sending error (background):", err));
 
-    // Welcome notifications should be sent after user enables notifications in settings
-    // FCM tokens are now managed via fcmTokenData in settings endpoint
-
+    // Respond immediately so the user is not stuck on loading
     return res.status(201).json({
       message: "Faculty registration successful!",
     });
@@ -141,25 +136,19 @@ export const enqueueStudentRegistration = async (req, res) => {
 
     // Save to database
     await StudentDetails.create(studentDoc);
-    
-    // Send welcome email
-    try {
-      await sendEmail(
-        studentDoc.email,
-        "Welcome to College360x 🎉",
-        `
+
+    // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
+    sendEmail(
+      studentDoc.email,
+      "Welcome to College360x 🎉",
+      `
           <h2>Hello ${studentDoc.fullname},</h2>
           <p>Your registration was successful!</p>
           <p>We're excited to have you onboard 🚀</p>
         `
-      );
-    } catch (err) {
-      console.error("Email sending error:", err);
-    }
+    ).catch((err) => console.error("Email sending error (background):", err));
 
-    // Welcome notifications should be sent after user enables notifications in settings
-    // FCM tokens are now managed via fcmTokenData in settings endpoint
-
+    // Respond immediately so the user is not stuck on loading
     return res.status(201).json({
       message: "Student registration successful!",
     });
@@ -201,26 +190,20 @@ export const enqueueHODRegistration = async (req, res) => {
 
     // Save to database
     await HOD.create(hodDoc);
-    
-    // Send welcome email
-    try {
-      await sendEmail(
-        hodDoc.email,
-        "Welcome to College360x 🎉",
-        `
+
+    // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
+    sendEmail(
+      hodDoc.email,
+      "Welcome to College360x 🎉",
+      `
           <h2>Hello ${hodDoc.fullname},</h2>
           <p>Your HOD registration was successful!</p>
           <p>We're excited to have you onboard 🚀</p>
           <p><strong>Department:</strong> ${hodDoc.department}</p>
         `
-      );
-    } catch (err) {
-      console.error("Email sending error:", err);
-    }
+    ).catch((err) => console.error("Email sending error (background):", err));
 
-    // Welcome notifications should be sent after user enables notifications in settings
-    // FCM tokens are now managed via fcmTokenData in settings endpoint
-
+    // Respond immediately so the user is not stuck on loading
     return res.status(201).json({
       message: "HOD registration successful!",
     });

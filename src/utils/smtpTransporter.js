@@ -42,3 +42,10 @@ if (hasEmailCredentials && transporter) {
   console.warn("⚠️  Email credentials not configured (EMAIL_USER and EMAIL_PASS missing)");
   console.warn("   Email sending will be disabled. Registration will still work, but welcome emails won't be sent.");
 }
+
+if (process.env.NODE_ENV !== "production") {
+  const sendEnabled = (process.env.SEND_EMAILS || process.env.NOTIFICATIONS_ENABLED || "").toLowerCase();
+  if (sendEnabled !== "true" && sendEnabled !== "1" && sendEnabled !== "yes") {
+    console.log("📧 Notifications/emails are disabled by default. Set SEND_EMAILS=true (or NOTIFICATIONS_ENABLED=true) to send welcome emails.");
+  }
+}
