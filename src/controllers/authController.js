@@ -5,6 +5,11 @@ import FacultyDetails from "../models/faculty/facultyDetails.js";
 import StudentDetails from "../models/student/studentDetails.js";
 import HOD from "../models/Hod/hodDetails.js";
 import { sendEmail } from "../utils/sendGmail.js";
+import {
+  getStudentWelcomeEmailHtml,
+  getFacultyWelcomeEmailHtml,
+  getHODWelcomeEmailHtml,
+} from "../utils/welcomeEmailTemplates.js";
 
 // Validation schema (dateofjoin: accept ISO string or YYYY-MM-DD from HTML date input)
 const facultySchema = Joi.object({
@@ -95,12 +100,8 @@ export const enqueueFacultyRegistration = async (req, res) => {
     // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
     sendEmail(
       facultyDoc.email,
-      "Welcome to College360x 🎉",
-      `
-          <h2>Hello ${facultyDoc.fullname},</h2>
-          <p>Your registration was successful!</p>
-          <p>We're excited to have you onboard 🚀</p>
-        `
+      "Welcome to College360x – Your Faculty Account is Ready 👩‍🏫",
+      getFacultyWelcomeEmailHtml(facultyDoc.fullname, facultyDoc.facultyid, facultyDoc.dept)
     ).catch((err) => console.error("Email sending error (background):", err));
 
     // Respond immediately so the user is not stuck on loading
@@ -150,12 +151,8 @@ export const enqueueStudentRegistration = async (req, res) => {
     // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
     sendEmail(
       studentDoc.email,
-      "Welcome to College360x 🎉",
-      `
-          <h2>Hello ${studentDoc.fullname},</h2>
-          <p>Your registration was successful!</p>
-          <p>We're excited to have you onboard 🚀</p>
-        `
+      "Welcome to College360x – Your Student Account is Ready 🎓",
+      getStudentWelcomeEmailHtml(studentDoc.fullname, studentDoc.studentid, studentDoc.programName)
     ).catch((err) => console.error("Email sending error (background):", err));
 
     // Respond immediately so the user is not stuck on loading
@@ -204,13 +201,8 @@ export const enqueueHODRegistration = async (req, res) => {
     // Send welcome email in background (do not await – avoids blocking response and SMTP timeouts)
     sendEmail(
       hodDoc.email,
-      "Welcome to College360x 🎉",
-      `
-          <h2>Hello ${hodDoc.fullname},</h2>
-          <p>Your HOD registration was successful!</p>
-          <p>We're excited to have you onboard 🚀</p>
-          <p><strong>Department:</strong> ${hodDoc.department}</p>
-        `
+      "Welcome to College360x – Your HOD Portal is Ready 🏛️",
+      getHODWelcomeEmailHtml(hodDoc.fullname, hodDoc.hodId, hodDoc.department)
     ).catch((err) => console.error("Email sending error (background):", err));
 
     // Respond immediately so the user is not stuck on loading
