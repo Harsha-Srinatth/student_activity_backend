@@ -199,9 +199,9 @@ const student_Dashboard_Details = async (req, res) => {
     const collegeId = student.collegeId;
     if (collegeId) {
       const top = await StudentDetails.find({ collegeId })
-        .sort({ weightedPoints: -1 })
+        .sort({ teachingPoints: -1, projectsPoints: -1, problemSolvingRank: -1, extraCurricularPoints: -1, coCurricularPoints: -1 })
         .limit(10)
-        .select("studentid fullname programName image.url teachingPoints projectsPoints problemSolvingRank extraCurricularPoints coCurricularPoints weightedPoints")
+        .select("studentid fullname programName image.url teachingPoints projectsPoints problemSolvingRank extraCurricularPoints coCurricularPoints")
         .lean();
       topTenStudents = top.map((s) => ({
         studentid: s.studentid,
@@ -213,7 +213,6 @@ const student_Dashboard_Details = async (req, res) => {
         problemSolvingRank: s.problemSolvingRank ?? 0,
         extraCurricularPoints: s.extraCurricularPoints ?? 0,
         coCurricularPoints: s.coCurricularPoints ?? 0,
-        weightedPoints: s.weightedPoints ?? 0,
       }));
     }
 
@@ -231,14 +230,20 @@ const student_Dashboard_Details = async (req, res) => {
         collegeName: student.collegeName,
         profileImage: student.image?.url ? { url: student.image.url } : null,
         // Return first token (backward compat) and full list for per-device UI
-        fcmToken: (student.fcmDevices && student.fcmDevices.length > 0) 
-          ? student.fcmDevices[0].token 
+        fcmToken: (student.fcmDevices && student.fcmDevices.length > 0)
+          ? student.fcmDevices[0].token
           : null,
         fcmDevices: student.fcmDevices || [],
         faculty: student.facultyid ? {
           facultyid: student.facultyid,
           fullname: facultyNameMap.get(student.facultyid) || undefined,
         } : undefined,
+        // Score fields for "Your Scores" (Teaching Points, Projects, Rank, etc.)
+        teachingPoints: student.teachingPoints ?? 0,
+        projectsPoints: student.projectsPoints ?? 0,
+        problemSolvingRank: student.problemSolvingRank ?? 0,
+        extraCurricularPoints: student.extraCurricularPoints ?? 0,
+        coCurricularPoints: student.coCurricularPoints ?? 0,
       },
       counts: {
         certificationsCount: student.certificationsCount || 0,
@@ -250,7 +255,6 @@ const student_Dashboard_Details = async (req, res) => {
         problemSolvingRank: student.problemSolvingRank || 0,
         extraCurricularPoints: student.extraCurricularPoints || 0,
         coCurricularPoints: student.coCurricularPoints || 0,
-        weightedPoints: student.weightedPoints || 0,
         approvedCount: student.approvedCount || 0,
         rejectedCount: student.rejectedCount || 0,
         pendingCount: student.pendingCount || 0,

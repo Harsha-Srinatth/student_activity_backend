@@ -73,15 +73,21 @@ import {
   deleteReply,
   deleteDoubt,
   toggleSolvedDoubt,
+  summarizeDoubtReplies,
 } from "../controllers/student/doubtController.js";
 
 router.get("/doubts", getCollegeDoubts);
 router.post("/doubts", createDoubt);
 router.get("/doubts/:doubtId", getDoubtById);
+router.get("/doubts/:doubtId/summarize", summarizeDoubtReplies);
 router.post("/doubts/:doubtId/replies", createReply);
 router.delete("/doubts/:doubtId/replies/:replyId", deleteReply);
 router.delete("/doubts/:doubtId", deleteDoubt);
 router.patch("/doubts/:doubtId/solve", toggleSolvedDoubt);
+
+// Placement Prediction (ML model)
+import { getPlacementPrediction } from "../controllers/student/placementController.js";
+router.get("/placement-prediction", getPlacementPrediction);
 
 // Announcements
 router.get("/announcements", getAnnouncementsForUser);

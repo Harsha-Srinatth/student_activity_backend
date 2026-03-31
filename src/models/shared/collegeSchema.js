@@ -10,6 +10,8 @@ const CollegeSchema = new mongoose.Schema({
     collegeZip: { type: String, required: true },
     collegePhone: { type: String, required: true },
     collegeEmail: { type: String, required: true },
+    Departments: { type: [String], required: true },
+    Sections: { type: [String], required: true }
 }, 
 { _id: false, timestamps: true }
 );

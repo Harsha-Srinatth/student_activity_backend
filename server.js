@@ -148,121 +148,81 @@ app.use("/register", limiter);
 const MONGO_URL =
   process.env.MONGO_URL; // fallback for local dev
 
+const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+
+logger.info("Connecting to MongoDB…");
+
 mongoose
   .connect(MONGO_URL, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     maxPoolSize: parseInt(process.env.MONGO_POOL_SIZE || "50", 10),
+    serverSelectionTimeoutMS: 60000, // wait up to 60 s for Atlas cold-start
+    connectTimeoutMS: 60000,
   })
   .then(() => {
-    logger.info("MongoDB connected");
-    
-    // Print notification and email service status
+    logger.info("MongoDB connected ✅");
+
+    // ── Register routes (only after DB is ready) ──────────────────────
+    app.use("/", routes);
+
+    // ── Global error handler (must be after routes) ───────────────────
+    // eslint-disable-next-line no-unused-vars
+    app.use((err, req, res, next) => {
+      const statusCode = err.status || err.statusCode || 500;
+      const message    = err.message || "Internal Server Error";
+      const details    = process.env.NODE_ENV === "production" ? undefined : err.stack;
+      req.log?.error({ err, statusCode }, "Unhandled error");
+      res.status(statusCode).json({ error: message, details });
+    });
+
+    // ── Start HTTP server (only after DB + routes are ready) ──────────
+    const server = app.listen(PORT, HOST, () => {
+      logger.info(`🚀 Server listening on ${HOST}:${PORT}`);
+      logger.info(`📡 API available at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+      logger.info(`🔗 Frontend should connect to: http://localhost:${PORT}`);
+    });
+
+    // ── Socket.IO (needs the server object) ───────────────────────────
+    const io = new Server(server, {
+      cors: {
+        origin: function (origin, callback) {
+          const socketOrigins = [
+            process.env.FRONTEND_ORIGIN,
+            "http://localhost:5173",
+            "http://localhost:3000",
+          ].filter(Boolean);
+
+          if (process.env.FRONTEND_ORIGIN) {
+            socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
+          }
+
+          if (!origin) return callback(null, true);
+
+          const isAllowed = socketOrigins.some(o =>
+            typeof o === 'string' ? origin === o : o.test(origin)
+          );
+          isAllowed ? callback(null, true) : callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        methods: ["GET", "POST"],
+      },
+      transports: ['websocket', 'polling'],
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      allowEIO3: true,
+      maxHttpBufferSize: 1e6,
+    });
+
+    io.use(handleSocketAuth);
+    io.on("connection", (socket) => handleConnection(socket, io));
+    global.io = io;
+
+    logger.info("Socket.IO server initialized");
     printServiceStatus();
   })
   .catch((err) => {
-    logger.error({ err }, "MongoDB connection error");
+    logger.error({ err }, "MongoDB connection failed — server will NOT start");
     process.exit(1);
   });
-
-app.use("/", routes);
-
-// Global JSON error handler (captures Multer/Cloudinary and other errors)
-// Must be after all routes
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  const statusCode = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  // Optionally include details in non-production
-  const details = process.env.NODE_ENV === "production" ? undefined : err.stack;
-  req.log?.error({ err, statusCode }, "Unhandled error");
-  res.status(statusCode).json({ error: message, details });
-});
-
-// Default to port 5000 for local development, use PORT env variable if set (for production)
-const PORT = process.env.PORT || 5000;
-// Listen on 0.0.0.0 for cloud deployments (Render, Railway, etc.) or when PORT is set
-// Use 127.0.0.1 only for local development when PORT is not set by the platform
-// Render and other cloud platforms always set PORT, so we bind to 0.0.0.0 to be accessible
-const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
-const server = app.listen(PORT, HOST, () => {
-  logger.info(`🚀 Server listening on ${HOST}:${PORT}`);
-  logger.info(`📡 API available at: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  logger.info(`🔗 Frontend should connect to: http://localhost:${PORT}`);
-});
-
-// -------------------------------
-// Socket.IO Setup
-// -------------------------------
-// LOCAL DEVELOPMENT Socket.IO CORS (COMMENTED)
-// Uncomment for local development:
-/*
-const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],
-    credentials: true,
-    methods: ["GET", "POST"],
-  },
-  transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  allowEIO3: true,
-  maxHttpBufferSize: 1e6,
-});
-*/
-
-// PRODUCTION Socket.IO CORS
-const io = new Server(server, {
-  cors: {
-    origin: function (origin, callback) {
-      const socketOrigins = [
-        process.env.FRONTEND_ORIGIN,
-        "http://localhost:5173",
-        "http://localhost:3000",
-      ].filter(Boolean);
-      
-      if (process.env.FRONTEND_ORIGIN) {
-        socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
-      }
-      
-      if (!origin) return callback(null, true);
-      
-      const isAllowed = socketOrigins.some(allowedOrigin => {
-        if (typeof allowedOrigin === 'string') {
-          return origin === allowedOrigin;
-        } else if (allowedOrigin instanceof RegExp) {
-          return allowedOrigin.test(origin);
-        }
-        return false;
-      });
-      
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST"],
-  },
-  transports: ['websocket', 'polling'],
-  // Connection timeout settings
-  pingTimeout: 60000,      // 60 seconds - how long to wait for pong before considering connection dead
-  pingInterval: 25000,     // 25 seconds - how often to send ping packets
-  // Connection management
-  allowEIO3: true,         // Allow Engine.IO v3 clients
-  maxHttpBufferSize: 1e6,  // 1MB max message size
-});
-
-// Socket authentication middleware
-io.use(handleSocketAuth);
-
-// Handle socket connections
-io.on("connection", (socket) => {
-  handleConnection(socket, io);
-});
-
-// Make io available globally for use in controllers
-global.io = io;
-
-logger.info("Socket.IO server initialized");

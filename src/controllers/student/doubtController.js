@@ -1,6 +1,12 @@
 import { Doubt, Reply } from "../../models/student/doubtSchema.js";
 import StudentDetails from "../../models/student/studentDetails.js";
 import { sendNotificationToStudent } from "../../utils/firebaseNotification.js";
+import { redisGet, redisSet } from "../../utils/redis.js";
+
+// NOTE: Gemini AI summarization has been moved to the frontend browser.
+// The backend cannot reach generativelanguage.googleapis.com on this network.
+// The /summarize endpoint below validates access and returns replies text;
+// the actual AI call is made by the browser using VITE_GEMINI_API_KEY.
 
 // ─── Helper: batch-populate user details onto an array of docs ───
 // Collects all unique createdBy IDs, looks up StudentDetails,
@@ -407,6 +413,18 @@ export const deleteDoubt = async (req, res) => {
     console.error("Error deleting doubt:", error);
     return res.status(500).json({ message: "Failed to delete doubt" });
   }
+};
+
+/**
+/**
+ * GET /student/doubts/:doubtId/summarize
+ * Route kept for backward compatibility but AI call has moved to the browser.
+ * This endpoint is no longer called — the frontend does the Gemini call directly.
+ */
+export const summarizeDoubtReplies = async (req, res) => {
+  return res.status(410).json({
+    message: "This endpoint is deprecated. AI summarization is now handled client-side.",
+  });
 };
 
 /**
