@@ -439,7 +439,7 @@ export const getHODInfo = async (req, res) => {
     }
 
     const hod = await HOD.findOne({ hodId: hodId })
-      .select("hodId fullname email collegeId department fcmDevices")
+      .select("hodId fullname email mobile collegeId department fcmDevices")
       .lean();
 
     if (!hod) {
@@ -460,6 +460,7 @@ export const getHODInfo = async (req, res) => {
           name: hod.fullname,
           fullname: hod.fullname,
           email: hod.email,
+          mobile: hod.mobile || null,
           collegeId: hod.collegeId,
           fcmToken: fcmToken,
           department: {
