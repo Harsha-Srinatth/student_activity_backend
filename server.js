@@ -92,12 +92,9 @@ const allowedOrigins = [
   "http://localhost:3000",     // Alternative local port
 ];
 
-// Add Vercel preview URLs pattern if FRONTEND_ORIGIN is set
-if (process.env.FRONTEND_ORIGIN) {
-  // Extract base domain from FRONTEND_ORIGIN (e.g., student-frontend-phi.vercel.app)
-  const baseDomain = process.env.FRONTEND_ORIGIN.replace(/^https?:\/\//, '');
-  // Allow all Vercel preview deployments (*.vercel.app)
-  allowedOrigins.push(new RegExp(`^https://.*\\.vercel\\.app$`));
+// Allow Vercel frontends in production, or whenever FRONTEND_ORIGIN is configured
+if (process.env.FRONTEND_ORIGIN || process.env.NODE_ENV === 'production') {
+  allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
 }
 
 // Filter out undefined values
@@ -194,7 +191,7 @@ mongoose
             "http://localhost:3000",
           ].filter(Boolean);
 
-          if (process.env.FRONTEND_ORIGIN) {
+          if (process.env.FRONTEND_ORIGIN || process.env.NODE_ENV === 'production') {
             socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
           }
 
