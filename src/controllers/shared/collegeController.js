@@ -16,25 +16,26 @@ export const getCollegeByCollegeId = async (req, res) => {
     }
 
     // Try exact match first (case-sensitive)
-    let college = await College.findOne({ collegeId })
-      .select("collegeId collegeName collegeAddress collegeCity collegeState collegeCountry collegeZip collegePhone collegeEmail")
-      .lean();
+    const collegeSelect =
+      "collegeId collegeName collegeAddress collegeCity collegeState collegeCountry collegeZip collegePhone collegeEmail Departments Sections";
+
+    let college = await College.findOne({ collegeId }).select(collegeSelect).lean();
 
     // If not found, try case-insensitive exact match
     if (!college) {
-      college = await College.findOne({ 
-        collegeId: { $regex: `^${collegeId}$`, $options: "i" } 
+      college = await College.findOne({
+        collegeId: { $regex: `^${collegeId}$`, $options: "i" },
       })
-        .select("collegeId collegeName collegeAddress collegeCity collegeState collegeCountry collegeZip collegePhone collegeEmail")
+        .select(collegeSelect)
         .lean();
     }
 
     // If still not found, try partial match (for autocomplete during typing)
     if (!college && collegeId.length >= 2) {
-      college = await College.findOne({ 
-        collegeId: { $regex: collegeId, $options: "i" } 
+      college = await College.findOne({
+        collegeId: { $regex: collegeId, $options: "i" },
       })
-        .select("collegeId collegeName collegeAddress collegeCity collegeState collegeCountry collegeZip collegePhone collegeEmail")
+        .select(collegeSelect)
         .lean();
     }
 
@@ -75,7 +76,7 @@ export const searchColleges = async (req, res) => {
         { collegeName: { $regex: query, $options: "i" } }
       ]
     })
-      .select("collegeId collegeName")
+      .select("collegeId collegeName collegeCity collegeState")
       .limit(20)
       .lean();
 

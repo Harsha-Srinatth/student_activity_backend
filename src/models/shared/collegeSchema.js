@@ -13,7 +13,7 @@ const CollegeSchema = new mongoose.Schema({
     Departments: { type: [String], required: true },
     Sections: { type: [String], required: true }
 }, 
-{ _id: false, timestamps: true }
+{ timestamps: true }
 );
 
 const College = mongoose.model("College", CollegeSchema);

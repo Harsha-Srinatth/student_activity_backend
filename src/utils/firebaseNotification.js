@@ -10,6 +10,15 @@ const __dirname = dirname(__filename);
 // Initialize Firebase Admin SDK
 let firebaseAdminInitialized = false;
 
+/** Vercel (or custom domain) frontend URL — for web push icons / links. Not the Render API URL. */
+function getWebAppBaseUrl() {
+  const explicit = process.env.FRONTEND_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  const first = process.env.FRONTEND_ORIGIN?.split(",")[0]?.trim();
+  if (first) return first.replace(/\/$/, "");
+  return "http://localhost:5173";
+}
+
 // Export function to check Firebase initialization status
 export const isFirebaseInitialized = () => firebaseAdminInitialized;
 
@@ -109,7 +118,7 @@ export const sendNotification = async (fcmToken, title, body, data = {}) => {
     // Get base URL from environment or use default
     // For production, this should be your deployed frontend URL
     // For web push, icon needs to be a publicly accessible URL
-    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
+    const baseUrl = getWebAppBaseUrl();
     // Use college-web-logo.jpeg from public folder (main app logo)
     const iconUrl = `${baseUrl}/college-web-logo.jpeg`;
     
@@ -264,7 +273,7 @@ export const sendBatchNotifications = async (fcmTokens, title, body, data = {}) 
   try {
     // Get base URL from environment or use default
     // For web push, icon needs to be a publicly accessible URL
-    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5173";
+    const baseUrl = getWebAppBaseUrl();
     // Use college-web-logo.jpeg from public folder (main app logo)
     const iconUrl = `${baseUrl}/college-web-logo.jpeg`;
     

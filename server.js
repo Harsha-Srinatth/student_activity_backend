@@ -26,6 +26,17 @@ dotenv.config();
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
 
+// Render / other reverse proxies — correct client IP for rate limiting and logs
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
+/** Comma-separated origins from env (e.g. https://app.vercel.app,https://custom.com) */
+function originsFromEnv(value) {
+  if (!value || typeof value !== "string") return [];
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 // Function to print service status on startup
 const printServiceStatus = () => {
   console.log("\n" + "=".repeat(70));
@@ -83,22 +94,29 @@ app.use(
 */
 
 // ============================================
-// PRODUCTION CORS CONFIGURATION
+// CORS (Vercel frontend + Render backend)
 // ============================================
-// CORS configuration - allow multiple origins for Vercel deployments
+// FRONTEND_ORIGIN: primary URL(s), comma-separated — e.g. https://your-app.vercel.app
+// CORS_ORIGINS:    extra allowed origins (custom domains, preview URLs)
 const allowedOrigins = [
-  process.env.FRONTEND_ORIGIN, // Production URL
-  "http://localhost:5173",     // Local development
-  "http://localhost:3000",     // Alternative local port
+  ...originsFromEnv(process.env.FRONTEND_ORIGIN),
+  ...originsFromEnv(process.env.CORS_ORIGINS),
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ];
 
-// Allow Vercel frontends in production, or whenever FRONTEND_ORIGIN is configured
-if (process.env.FRONTEND_ORIGIN || process.env.NODE_ENV === 'production') {
+// Any *.vercel.app when production (Render) or when you explicitly set frontend origin(s)
+if (
+  process.env.NODE_ENV === "production" ||
+  originsFromEnv(process.env.FRONTEND_ORIGIN).length > 0 ||
+  originsFromEnv(process.env.CORS_ORIGINS).length > 0
+) {
   allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
 }
 
-// Filter out undefined values
-const validOrigins = allowedOrigins.filter(origin => origin);
+const validOrigins = allowedOrigins.filter(Boolean);
 
 app.use(
   cors({
@@ -152,8 +170,6 @@ logger.info("Connecting to MongoDB…");
 
 mongoose
   .connect(MONGO_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     maxPoolSize: parseInt(process.env.MONGO_POOL_SIZE || "50", 10),
     serverSelectionTimeoutMS: 60000, // wait up to 60 s for Atlas cold-start
     connectTimeoutMS: 60000,
@@ -186,12 +202,19 @@ mongoose
       cors: {
         origin: function (origin, callback) {
           const socketOrigins = [
-            process.env.FRONTEND_ORIGIN,
+            ...originsFromEnv(process.env.FRONTEND_ORIGIN),
+            ...originsFromEnv(process.env.CORS_ORIGINS),
             "http://localhost:5173",
+            "http://127.0.0.1:5173",
             "http://localhost:3000",
-          ].filter(Boolean);
+            "http://127.0.0.1:3000",
+          ];
 
-          if (process.env.FRONTEND_ORIGIN || process.env.NODE_ENV === 'production') {
+          if (
+            process.env.NODE_ENV === "production" ||
+            originsFromEnv(process.env.FRONTEND_ORIGIN).length > 0 ||
+            originsFromEnv(process.env.CORS_ORIGINS).length > 0
+          ) {
             socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
           }
 

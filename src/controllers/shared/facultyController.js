@@ -1,5 +1,9 @@
 import FacultyDetails from "../../models/faculty/facultyDetails.js";
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Get faculty information by facultyId
  */
@@ -45,8 +49,6 @@ export const searchFaculty = async (req, res) => {
   try {
     const { query, collegeId } = req.query;
 
-    console.log("Faculty search request:", { query, collegeId });
-
     if (!query || query.trim().length < 2) {
       return res.status(400).json({ 
         success: false,
@@ -54,28 +56,25 @@ export const searchFaculty = async (req, res) => {
       });
     }
 
+    const q = escapeRegex(query.trim());
+
     // Build search query
     const searchQuery = {
       $or: [
-        { facultyid: { $regex: query.trim(), $options: "i" } },
-        { fullname: { $regex: query.trim(), $options: "i" } }
-      ]
+        { facultyid: { $regex: q, $options: "i" } },
+        { fullname: { $regex: q, $options: "i" } },
+      ],
     };
 
     // Optionally filter by collegeId if provided
-    // Use case-insensitive matching for collegeId
     if (collegeId && collegeId.trim()) {
-      searchQuery.collegeId = { $regex: `^${collegeId.trim()}$`, $options: "i" };
+      searchQuery.collegeId = { $regex: `^${escapeRegex(collegeId.trim())}$`, $options: "i" };
     }
-
-    console.log("MongoDB search query:", JSON.stringify(searchQuery, null, 2));
 
     const faculty = await FacultyDetails.find(searchQuery)
       .select("facultyid fullname email designation collegeId dept")
       .limit(20)
       .lean();
-
-    console.log(`Found ${faculty.length} faculty matching search`);
 
     return res.status(200).json({
       success: true,

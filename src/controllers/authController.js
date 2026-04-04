@@ -41,7 +41,7 @@ const studentSchema = Joi.object({
   password: Joi.string().min(8).required(),
   programName: Joi.string().trim().required(),
   semester: Joi.string().trim().optional().allow(""),
-  facultyid: Joi.string().trim().required(),
+  facultyid: Joi.string().trim().optional().allow(""),
   dateofjoin: Joi.date().iso().required(),
   // fcmToken removed - use fcmTokenData in settings endpoint after login
 });
@@ -122,7 +122,17 @@ export const enqueueFacultyRegistration = async (req, res) => {
 
 export const enqueueStudentRegistration = async (req, res) => {
   try {
-    const { error, value } = studentSchema.validate(req.body, { stripUnknown: true });
+    const body = { ...req.body };
+    if (!body.collegeId && body.institutionId) {
+      body.collegeId = String(body.institutionId).trim();
+    }
+    if (!body.programName && body.dept) {
+      body.programName = String(body.dept).trim();
+    }
+    if (body.section != null && body.section !== "" && body.semester == null) {
+      body.semester = String(body.section).trim();
+    }
+    const { error, value } = studentSchema.validate(body, { stripUnknown: true });
     if (error) return res.status(400).json({ message: error.details[0].message });
 
     // Hash password
@@ -140,7 +150,7 @@ export const enqueueStudentRegistration = async (req, res) => {
       password: hashedPassword,
       programName: value.programName,
       semester: value.semester,
-      facultyid: value.facultyid,
+      facultyid: value.facultyid?.trim() || "",
       dateofjoin: value.dateofjoin,
       // fcmToken removed - users should register tokens via settings endpoint after login
     };
