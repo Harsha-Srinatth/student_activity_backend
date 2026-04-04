@@ -21,7 +21,7 @@ services:
       NODE_ENV: production
       PORT: 5000
       HOST: 0.0.0.0
-      MONGO_URL: mongodb+srv://harhsasrinatth5599:harsha5599@cluster0.4uagd3j.mongodb.net/
+      MONGO_URL: process.env.MONGO_URL
       REDIS_HOST: redis
       REDIS_PORT: 6379
       WORKER_CONCURRENCY: 8
@@ -36,7 +36,7 @@ services:
       - redis
     environment:
       NODE_ENV: production
-      MONGO_URL: mongodb+srv://harhsasrinatth5599:harsha5599@cluster0.4uagd3j.mongodb.net/
+      MONGO_URL: process.env.MONGO_URL
       REDIS_HOST: redis
       REDIS_PORT: 6379
       WORKER_CONCURRENCY: 8
