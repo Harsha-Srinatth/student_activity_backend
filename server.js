@@ -202,6 +202,7 @@ mongoose
       cors: {
         origin: function (origin, callback) {
           const socketOrigins = [
+<<<<<<< HEAD
             ...originsFromEnv(process.env.FRONTEND_ORIGIN),
             ...originsFromEnv(process.env.CORS_ORIGINS),
             "http://localhost:5173",
@@ -215,6 +216,14 @@ mongoose
             originsFromEnv(process.env.FRONTEND_ORIGIN).length > 0 ||
             originsFromEnv(process.env.CORS_ORIGINS).length > 0
           ) {
+=======
+            process.env.FRONTEND_ORIGIN,
+            "http://localhost:5173",
+            "http://localhost:3000",
+          ].filter(Boolean);
+
+          if (process.env.FRONTEND_ORIGIN) {
+>>>>>>> e75b804 (Latest Version)
             socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
           }
 
