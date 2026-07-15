@@ -202,7 +202,6 @@ mongoose
       cors: {
         origin: function (origin, callback) {
           const socketOrigins = [
-<<<<<<< HEAD
             ...originsFromEnv(process.env.FRONTEND_ORIGIN),
             ...originsFromEnv(process.env.CORS_ORIGINS),
             "http://localhost:5173",
@@ -210,34 +209,31 @@ mongoose
             "http://localhost:3000",
             "http://127.0.0.1:3000",
           ];
-
+    
           if (
             process.env.NODE_ENV === "production" ||
             originsFromEnv(process.env.FRONTEND_ORIGIN).length > 0 ||
             originsFromEnv(process.env.CORS_ORIGINS).length > 0
           ) {
-=======
-            process.env.FRONTEND_ORIGIN,
-            "http://localhost:5173",
-            "http://localhost:3000",
-          ].filter(Boolean);
-
-          if (process.env.FRONTEND_ORIGIN) {
->>>>>>> e75b804 (Latest Version)
             socketOrigins.push(/^https:\/\/.*\.vercel\.app$/);
           }
-
+    
           if (!origin) return callback(null, true);
-
-          const isAllowed = socketOrigins.some(o =>
-            typeof o === 'string' ? origin === o : o.test(origin)
+    
+          const isAllowed = socketOrigins.some((o) =>
+            typeof o === "string" ? origin === o : o.test(origin)
           );
-          isAllowed ? callback(null, true) : callback(new Error('Not allowed by CORS'));
+    
+          if (isAllowed) {
+            callback(null, true);
+          } else {
+            callback(new Error("Not allowed by CORS"));
+          }
         },
         credentials: true,
         methods: ["GET", "POST"],
       },
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       pingTimeout: 60000,
       pingInterval: 25000,
       allowEIO3: true,
